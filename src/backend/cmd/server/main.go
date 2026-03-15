@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xinyiis/BridgeDefectDetectionSys/internal/infrastructure/persistence"
-	"github.com/xinyiis/BridgeDefectDetectionSys/internal/interfaces/http/router"
-	"github.com/xinyiis/BridgeDefectDetectionSys/pkg/config"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/persistence"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/router"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/config"
 )
 
 func main() {

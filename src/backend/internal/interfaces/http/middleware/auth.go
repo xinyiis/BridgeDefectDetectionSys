@@ -6,9 +6,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/xinyiis/BridgeDefectDetectionSys/internal/domain/model"
-	"github.com/xinyiis/BridgeDefectDetectionSys/pkg/config"
-	"github.com/xinyiis/BridgeDefectDetectionSys/pkg/response"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/config"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/response"
 	"gorm.io/gorm"
 )
 

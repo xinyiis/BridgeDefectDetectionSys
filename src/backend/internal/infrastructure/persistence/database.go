@@ -5,8 +5,9 @@ package persistence
 import (
 	"log"
 
-	"github.com/xinyiis/BridgeDefectDetectionSys/internal/domain/model"
-	"github.com/xinyiis/BridgeDefectDetectionSys/pkg/config"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/config"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -112,11 +113,17 @@ func createDefaultAdmin(db *gorm.DB) {
 	db.Model(&model.User{}).Where("role = ?", "admin").Count(&count)
 
 	if count == 0 {
-		// 注意：这里使用明文密码仅用于演示，实际使用时应该使用 bcrypt 加密
-		// 在后续的 handler 实现中会使用 bcrypt
+		// 使用 bcrypt 加密默认密码
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		if err != nil {
+			log.Printf("⚠️  密码加密失败: %v", err)
+			return
+		}
+
 		admin := model.User{
 			Username: "admin",
-			Password: "admin123", // 临时明文密码，首次运行后应立即修改
+			Password: string(hashedPassword), // bcrypt 加密后的密码
+			RealName: "系统管理员",
 			Email:    "admin@example.com",
 			Role:     "admin",
 		}
