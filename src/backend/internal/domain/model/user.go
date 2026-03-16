@@ -89,6 +89,13 @@ func (Drone) TableName() string {
 	return "drones"
 }
 
+// IsOwnedBy 判断无人机是否属于指定用户
+// 返回值：
+//   - bool: true 表示属于该用户，false 表示不属于
+func (d *Drone) IsOwnedBy(userID uint) bool {
+	return d.UserID == userID
+}
+
 // Defect 缺陷检测结果实体
 // 对应数据库 defects 表
 type Defect struct {

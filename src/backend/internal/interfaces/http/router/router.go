@@ -89,21 +89,25 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// 1. Repository 层
 	userRepo := persistence.NewUserRepository(db)
 	bridgeRepo := persistence.NewBridgeRepository(db)
+	droneRepo := persistence.NewDroneRepository(db)
 
 	// 2. Service 层
 	userService := service.NewUserService(userRepo)
 	fileService := persistence.NewLocalFileStorage("./uploads")
 	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
+	droneService := service.NewDroneService(db, droneRepo)
 
 	// 3. UseCase 层
 	authUseCase := usecase.NewAuthUseCase(userService)
 	userUseCase := usecase.NewUserUseCase(userService)
 	bridgeUseCase := usecase.NewBridgeUseCase(bridgeService)
+	droneUseCase := usecase.NewDroneUseCase(droneService)
 
 	// 4. Handler 层
 	authHandler := handler.NewAuthHandler(authUseCase)
 	userHandler := handler.NewUserHandler(userUseCase)
 	bridgeHandler := handler.NewBridgeHandler(bridgeUseCase, fileService)
+	droneHandler := handler.NewDroneHandler(droneUseCase)
 
 	// ========== 路由注册 ==========
 	// API 路由组（/api/v1）
@@ -115,7 +119,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
-	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, bridgeRepo, cfg)
+	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, bridgeRepo, droneRepo, cfg)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -146,7 +150,7 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 
 // registerAuthRoutes 注册认证路由
 // 这些接口需要用户登录后才能访问
-func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, bridgeRepo repository.BridgeRepository, cfg *config.Config) {
+func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, cfg *config.Config) {
 	// ========== 用户认证相关 ==========
 	auth := r.Group("/auth")
 	{
@@ -177,12 +181,22 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 		}
 	}
 
-	// ========== 无人机管理（待实现）==========
-	// r.GET("/drones", handler.GetDrones(db))                                // 获取无人机列表
-	// r.POST("/drones", handler.CreateDrone(db))                             // 创建无人机
-	// r.GET("/drones/:id", handler.GetDrone(db))                             // 获取无人机详情
-	// r.PUT("/drones/:id", handler.UpdateDrone(db))                          // 更新无人机
-	// r.DELETE("/drones/:id", handler.DeleteDrone(db))                       // 删除无人机
+	// ========== 无人机管理 ==========
+	drones := r.Group("/drones")
+	{
+		// 列表和创建不需要所有权验证
+		drones.GET("", droneHandler.ListDrones)    // GET /api/v1/drones
+		drones.POST("", droneHandler.CreateDrone)  // POST /api/v1/drones
+
+		// 单个资源操作需要所有权验证
+		droneResource := drones.Group("/:id")
+		droneResource.Use(middleware.DroneOwnershipRequired(droneRepo))
+		{
+			droneResource.GET("", droneHandler.GetDrone)       // GET /api/v1/drones/:id
+			droneResource.PUT("", droneHandler.UpdateDrone)    // PUT /api/v1/drones/:id
+			droneResource.DELETE("", droneHandler.DeleteDrone) // DELETE /api/v1/drones/:id
+		}
+	}
 
 	// ========== 缺陷检测（待实现）==========
 	// r.POST("/detect/image", handler.DetectImage(db, cfg))                  // 图片检测
