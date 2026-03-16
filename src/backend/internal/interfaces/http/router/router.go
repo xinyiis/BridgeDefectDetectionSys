@@ -7,6 +7,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/usecase"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/persistence"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/handler"
@@ -25,9 +26,10 @@ import (
 //   - *gin.Engine: 配置完成的 Gin 引擎
 //
 // 路由结构：
-//   - /api                公开路由（无需登录）
-//   - /api/auth          认证路由（需要登录）
-//   - /api/admin         管理员路由（需要管理员权限）
+//   - /api/v1/auth       认证路由（公开，无需登录）
+//   - /api/v1/user       用户相关（需要登录）
+//   - /api/v1/admin      管理员路由（需要管理员权限）
+//   - /api/v1/bridges    桥梁管理（需要登录）
 //   - /uploads           静态文件（检测结果图片）
 //
 // 使用示例：
@@ -86,29 +88,34 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// ========== 依赖注入 ==========
 	// 1. Repository 层
 	userRepo := persistence.NewUserRepository(db)
+	bridgeRepo := persistence.NewBridgeRepository(db)
 
 	// 2. Service 层
 	userService := service.NewUserService(userRepo)
+	fileService := persistence.NewLocalFileStorage("./uploads")
+	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
 
 	// 3. UseCase 层
 	authUseCase := usecase.NewAuthUseCase(userService)
 	userUseCase := usecase.NewUserUseCase(userService)
+	bridgeUseCase := usecase.NewBridgeUseCase(bridgeService)
 
 	// 4. Handler 层
 	authHandler := handler.NewAuthHandler(authUseCase)
 	userHandler := handler.NewUserHandler(userUseCase)
+	bridgeHandler := handler.NewBridgeHandler(bridgeUseCase, fileService)
 
 	// ========== 路由注册 ==========
-	// API 路由组（/api）
-	api := r.Group("/api")
+	// API 路由组（/api/v1）
+	api := r.Group("/api/v1")
 
-	// 1. 公开路由（无需登录）
+	// 1. 公开路由（无需登录）- 认证相关
 	registerPublicRoutes(api, authHandler)
 
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
-	registerAuthRoutes(auth, authHandler, userHandler, cfg)
+	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, bridgeRepo, cfg)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -125,29 +132,50 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 		c.JSON(200, gin.H{
 			"status":  "ok",
 			"message": "Bridge Detection System API is running",
+			"version": "v1",
 		})
 	})
 
-	// ========== 用户认证 ==========
-	r.POST("/register", authHandler.Register) // 用户注册
-	r.POST("/login", authHandler.Login)       // 用户登录
+	// ========== 用户认证（/auth前缀）==========
+	auth := r.Group("/auth")
+	{
+		auth.POST("/register", authHandler.Register) // POST /api/v1/auth/register
+		auth.POST("/login", authHandler.Login)       // POST /api/v1/auth/login
+	}
 }
 
 // registerAuthRoutes 注册认证路由
 // 这些接口需要用户登录后才能访问
-func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, cfg *config.Config) {
-	// ========== 用户相关 ==========
-	r.POST("/logout", authHandler.Logout)         // 退出登录
-	r.GET("/user/info", userHandler.GetUserInfo)  // 获取当前用户信息
-	r.PUT("/user/info", userHandler.UpdateUserInfo) // 更新用户信息
+func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, bridgeRepo repository.BridgeRepository, cfg *config.Config) {
+	// ========== 用户认证相关 ==========
+	auth := r.Group("/auth")
+	{
+		auth.POST("/logout", authHandler.Logout) // POST /api/v1/auth/logout
+	}
 
-	// ========== 桥梁管理（待实现）==========
-	// r.GET("/bridges", handler.GetBridges(db))                              // 获取桥梁列表
-	// r.POST("/bridges", handler.CreateBridge(db))                           // 创建桥梁
-	// r.GET("/bridges/:id", handler.GetBridge(db))                           // 获取桥梁详情
-	// r.PUT("/bridges/:id", handler.UpdateBridge(db))                        // 更新桥梁
-	// r.DELETE("/bridges/:id", handler.DeleteBridge(db))                     // 删除桥梁
-	// r.GET("/bridges/:id/defects", handler.GetBridgeDefects(db))            // 获取桥梁的缺陷列表
+	// ========== 用户个人信息 ==========
+	user := r.Group("/user")
+	{
+		user.GET("/profile", userHandler.GetUserInfo)     // GET /api/v1/user/profile
+		user.PUT("/profile", userHandler.UpdateUserInfo)  // PUT /api/v1/user/profile
+	}
+
+	// ========== 桥梁管理 ==========
+	bridges := r.Group("/bridges")
+	{
+		// 列表和创建不需要所有权验证
+		bridges.GET("", bridgeHandler.ListBridges)    // 获取桥梁列表
+		bridges.POST("", bridgeHandler.CreateBridge)  // 创建桥梁
+
+		// 单个资源操作需要所有权验证
+		bridgeResource := bridges.Group("/:id")
+		bridgeResource.Use(middleware.BridgeOwnershipRequired(bridgeRepo))
+		{
+			bridgeResource.GET("", bridgeHandler.GetBridge)       // 获取桥梁详情
+			bridgeResource.PUT("", bridgeHandler.UpdateBridge)    // 更新桥梁
+			bridgeResource.DELETE("", bridgeHandler.DeleteBridge) // 删除桥梁
+		}
+	}
 
 	// ========== 无人机管理（待实现）==========
 	// r.GET("/drones", handler.GetDrones(db))                                // 获取无人机列表
