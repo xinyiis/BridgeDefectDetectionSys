@@ -15,7 +15,8 @@ database:
 
 # Python 算法服务配置
 python_service:
-  url: "http://localhost:8000"    # Python 服务地址
+  enabled: false                   # 是否启用真实Python服务（false=Mock，true=HTTP）
+  url: "http://localhost:8000"     # Python 服务地址
   timeout: 30                      # 请求超时时间（秒）
 
 # 文件上传配置

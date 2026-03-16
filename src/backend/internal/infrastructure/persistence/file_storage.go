@@ -3,6 +3,7 @@
 package persistence
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -68,6 +69,51 @@ func (s *LocalFileStorage) SaveUploadedFile(file *multipart.FileHeader, dir stri
 	}
 
 	// 7. 返回相对路径（存入数据库）
+	return filepath.Join(dir, filename), nil
+}
+
+// SaveImage 保存图片文件（快捷方法）
+// 参数：
+//   - file: 上传的图片文件
+//   - dir: 保存目录（相对路径）
+// 返回：
+//   - string: 文件相对路径
+//   - error: 错误信息
+func (s *LocalFileStorage) SaveImage(file *multipart.FileHeader, dir string) (string, error) {
+	return s.SaveUploadedFile(file, dir)
+}
+
+// SaveResultImage 保存结果图（从Base64）
+// 参数：
+//   - base64Data: Base64编码的图片数据
+//   - dir: 保存目录（相对路径）
+// 返回：
+//   - string: 文件相对路径
+//   - error: 错误信息
+func (s *LocalFileStorage) SaveResultImage(base64Data string, dir string) (string, error) {
+	// 1. 解码Base64数据
+	imageData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return "", fmt.Errorf("Base64解码失败: %w", err)
+	}
+
+	// 2. 生成唯一文件名（默认.jpg扩展名）
+	filename := fmt.Sprintf("%s.jpg", uuid.New().String())
+
+	// 3. 构建完整路径
+	fullPath := filepath.Join(s.baseDir, dir, filename)
+
+	// 4. 确保目录存在
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		return "", fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	// 5. 写入文件
+	if err := os.WriteFile(fullPath, imageData, 0644); err != nil {
+		return "", fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	// 6. 返回相对路径
 	return filepath.Join(dir, filename), nil
 }
 

@@ -37,6 +37,7 @@ type DatabaseConfig struct {
 
 // PythonServiceConfig Python 算法服务配置
 type PythonServiceConfig struct {
+	Enabled bool   `yaml:"enabled"` // 是否启用真实Python服务（false=Mock，true=HTTP）
 	URL     string `yaml:"url"`     // Python 服务地址
 	Timeout int    `yaml:"timeout"` // 请求超时时间（秒）
 }
