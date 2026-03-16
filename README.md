@@ -168,7 +168,24 @@ go mod verify
 mysql -uroot -p123456 -e "CREATE DATABASE bridge_detection CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
----
+### 第五步：安装前端环境
+
+**1. 安装 Node.js 运行环境**
+
+如果系统中尚未安装 Node.js，请执行以下命令：
+
+```bash
+# 更新系统包列表
+sudo apt update
+
+# 安装 Node.js 和 npm
+sudo apt install nodejs npm -y
+
+# 验证安装（建议 Node 版本 v18+）
+node -v
+npm -v
+```
+
 
 ## 开发指南
 
