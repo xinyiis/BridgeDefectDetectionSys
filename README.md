@@ -342,9 +342,12 @@ CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    email VARCHAR(100),
-    role ENUM('user', 'admin') DEFAULT 'user',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    real_name VARCHAR(50) NOT NULL,
+    phone VARCHAR(20),
+    email VARCHAR(100) UNIQUE NOT NULL,
+    role VARCHAR(20) DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 桥梁表
@@ -353,9 +356,9 @@ CREATE TABLE bridges (
     name VARCHAR(100) NOT NULL,
     location VARCHAR(255),
     description TEXT,
-    model_path VARCHAR(255),
     user_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -367,6 +370,7 @@ CREATE TABLE drones (
     stream_url VARCHAR(255),
     user_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -376,13 +380,14 @@ CREATE TABLE defects (
     bridge_id INT NOT NULL,
     defect_type VARCHAR(50) NOT NULL,
     image_path VARCHAR(255) NOT NULL,
-    result_path VARCHAR(255) NOT NULL,
-    bbox JSON,
-    length FLOAT,
-    width FLOAT,
-    area FLOAT,
-    confidence FLOAT,
+    result_path VARCHAR(255),
+    bbox TEXT,
+    length DECIMAL(10,4),
+    width DECIMAL(10,4),
+    area DECIMAL(10,4),
+    confidence DECIMAL(5,4),
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bridge_id) REFERENCES bridges(id)
 );
 ```
