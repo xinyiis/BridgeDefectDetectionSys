@@ -107,6 +107,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		pythonService = external.NewMockPythonService()
 	}
 	defectService := service.NewDefectService(db, defectRepo, bridgeRepo)
+	statsService := persistence.NewStatsService(db)
 
 	// 3. UseCase 层
 	authUseCase := usecase.NewAuthUseCase(userService)
@@ -115,6 +116,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	droneUseCase := usecase.NewDroneUseCase(droneService)
 	detectionUseCase := usecase.NewDetectionUseCase(defectService, bridgeService, pythonService, fileService)
 	defectUseCase := usecase.NewDefectUseCase(defectService, fileService)
+	statsUseCase := usecase.NewStatsUseCase(statsService)
 
 	// 4. Handler 层
 	authHandler := handler.NewAuthHandler(authUseCase)
@@ -123,6 +125,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	droneHandler := handler.NewDroneHandler(droneUseCase)
 	detectionHandler := handler.NewDetectionHandler(detectionUseCase)
 	defectHandler := handler.NewDefectHandler(defectUseCase)
+	statsHandler := handler.NewStatsHandler(statsUseCase)
 
 	// ========== 路由注册 ==========
 	// API 路由组（/api/v1）
@@ -134,7 +137,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
-	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, defectHandler, bridgeRepo, droneRepo, defectService, cfg)
+	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, defectHandler, statsHandler, bridgeRepo, droneRepo, defectService, cfg)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -165,7 +168,7 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 
 // registerAuthRoutes 注册认证路由
 // 这些接口需要用户登录后才能访问
-func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, defectHandler *handler.DefectHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, defectService *service.DefectService, cfg *config.Config) {
+func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, defectHandler *handler.DefectHandler, statsHandler *handler.StatsHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, defectService *service.DefectService, cfg *config.Config) {
 	// ========== 用户认证相关 ==========
 	auth := r.Group("/auth")
 	{
@@ -232,10 +235,16 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 		}
 	}
 
-	// ========== 统计分析（待实现）==========
-	// r.GET("/stats/overview", handler.GetStatsOverview(db))                 // 获取统计概览
-	// r.GET("/stats/defect-trends", handler.GetDefectTrends(db))             // 获取缺陷趋势
-	// r.GET("/stats/bridge/:id", handler.GetBridgeStats(db))                 // 获取单个桥梁统计
+	// ========== 统计分析 ==========
+	stats := r.Group("/stats")
+	{
+		stats.GET("/overview", statsHandler.GetOverview)                        // GET /api/v1/stats/overview
+		stats.GET("/defect-types", statsHandler.GetDefectTypeDistribution)      // GET /api/v1/stats/defect-types
+		stats.GET("/defect-trend", statsHandler.GetDefectTrend)                 // GET /api/v1/stats/defect-trend
+		stats.GET("/bridge-ranking", statsHandler.GetBridgeRanking)             // GET /api/v1/stats/bridge-ranking
+		stats.GET("/recent-detections", statsHandler.GetRecentDetections)       // GET /api/v1/stats/recent-detections
+		stats.GET("/high-risk-alerts", statsHandler.GetHighRiskAlerts)          // GET /api/v1/stats/high-risk-alerts
+	}
 }
 
 // registerAdminRoutes 注册管理员路由
