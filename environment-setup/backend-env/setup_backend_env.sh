@@ -44,7 +44,7 @@ show_help() {
     echo "  -u, --uninstall 完全卸载所有组件"
     echo ""
     echo "安装组件:"
-    echo "  - Go 1.21.6"
+    echo "  - Go 1.25.0"
     echo "  - MySQL 8.0 (root/123456)"
     echo "  - Go依赖包（Gin, GORM等）"
     echo ""
@@ -256,7 +256,7 @@ install_go() {
         return
     fi
 
-    GO_VERSION="1.21.6"
+    GO_VERSION="1.25.0"
     GO_TAR="go${GO_VERSION}.linux-amd64.tar.gz"
     GO_URL="https://go.dev/dl/${GO_TAR}"
 
