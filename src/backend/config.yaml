@@ -1,0 +1,39 @@
+# 桥梁缺陷检测系统 - 配置文件
+# 用于配置服务器、数据库、第三方服务等
+
+# 服务器配置
+server:
+  port: 8080              # HTTP 服务端口
+  mode: debug             # 运行模式: debug/release
+
+# 数据库配置
+database:
+  dsn: "root:123456@tcp(localhost:3306)/bridge_detection?charset=utf8mb4&parseTime=True&loc=Local"
+  max_idle_conns: 10      # 最大空闲连接数
+  max_open_conns: 100     # 最大打开连接数
+  conn_max_lifetime: 3600 # 连接最大生命周期（秒）
+
+# Python 算法服务配置
+python_service:
+  enabled: false                   # 是否启用真实Python服务（false=Mock，true=HTTP）
+  url: "http://localhost:8000"     # Python 服务地址
+  timeout: 30                      # 请求超时时间（秒）
+
+# 文件上传配置
+upload:
+  image_dir: "./uploads/images"    # 原始图片保存目录
+  result_dir: "./uploads/results"  # 检测结果保存目录
+  max_size: 10                     # 最大文件大小（MB）
+
+# Session 配置
+session:
+  secret: "bridge-detection-secret-key-change-in-production"  # Session 密钥（生产环境必须修改）
+  max_age: 86400                   # Session 有效期（秒，默认24小时）
+  cookie_name: "bridge_session"    # Cookie 名称
+
+# CORS 跨域配置
+cors:
+  allow_origins:
+    - "http://localhost:5173"      # 前端开发地址
+    - "http://localhost:3000"      # 备用前端地址
+  allow_credentials: true           # 允许携带 Cookie（Session 认证必需）

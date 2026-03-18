@@ -1,0 +1,53 @@
+# 二进制文件
+bridge-server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# 测试覆盖率
+coverage.out
+coverage.html
+*.coverprofile
+
+# Go workspace 文件
+go.work
+go.work.sum
+
+# 依赖目录（如果使用 vendor）
+vendor/
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 临时文件
+*.tmp
+*.log
+*.pid
+
+# 上传文件（开发环境）
+uploads/
+
+# 测试数据
+testdata/*.db
+testdata/*.sqlite
+
+# 环境变量文件（如果包含敏感信息）
+.env
+.env.local
+
+# 构建输出
+bin/
+dist/
+build/
+
+# 调试文件
+debug
+__debug_bin
