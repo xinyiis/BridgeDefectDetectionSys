@@ -16,6 +16,24 @@ type FileService interface {
 	//   - error: 错误信息
 	SaveUploadedFile(file *multipart.FileHeader, dir string) (string, error)
 
+	// SaveImage 保存图片文件（快捷方法）
+	// 参数：
+	//   - file: 上传的图片文件
+	//   - dir: 保存目录（相对路径，如 "images"）
+	// 返回：
+	//   - string: 文件相对路径
+	//   - error: 错误信息
+	SaveImage(file *multipart.FileHeader, dir string) (string, error)
+
+	// SaveResultImage 保存结果图（从Base64）
+	// 参数：
+	//   - base64Data: Base64编码的图片数据
+	//   - dir: 保存目录（相对路径，如 "results"）
+	// 返回：
+	//   - string: 文件相对路径
+	//   - error: 错误信息
+	SaveResultImage(base64Data string, dir string) (string, error)
+
 	// DeleteFile 删除文件
 	// 参数：
 	//   - path: 文件相对路径

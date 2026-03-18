@@ -44,9 +44,10 @@ show_help() {
     echo "  -u, --uninstall 完全卸载所有组件"
     echo ""
     echo "安装组件:"
-    echo "  - Go 1.21.6"
+    echo "  - Go 1.25.0"
     echo "  - MySQL 8.0 (root/123456)"
-    echo "  - Go依赖包（Gin, GORM等）"
+    echo "  - Go依赖包（Gin, GORM, gofpdf, go-chart等）"
+    echo "  - PDF报表生成支持（思源黑体字体、报表目录）"
     echo ""
     echo "说明:"
     echo "  - MySQL仅安装并设置root密码，不创建数据库"
@@ -197,6 +198,7 @@ uninstall_all() {
     print_warning "此操作将删除："
     echo "  - Go及其环境变量"
     echo "  - MySQL及所有数据库"
+    echo "  - PDF字体文件和报表目录"
     echo ""
     print_error "⚠️  此操作不可恢复！⚠️"
     echo ""
@@ -228,6 +230,24 @@ uninstall_all() {
     sudo rm -rf /etc/mysql /var/lib/mysql
     print_success "MySQL已卸载"
 
+    # 清理PDF相关文件
+    print_info "清理PDF字体和报表目录..."
+    if [ -d "fonts" ]; then
+        read -p "是否删除fonts目录? (y/n): " delete_fonts
+        if [ "$delete_fonts" = "y" ]; then
+            rm -rf fonts
+            print_success "fonts目录已删除"
+        fi
+    fi
+
+    if [ -d "reports" ]; then
+        read -p "是否删除reports目录（包含所有报表）? (y/n): " delete_reports
+        if [ "$delete_reports" = "y" ]; then
+            rm -rf reports
+            print_success "reports目录已删除"
+        fi
+    fi
+
     print_success "=========================================="
     print_success "完全卸载完成！"
     print_success "=========================================="
@@ -256,7 +276,7 @@ install_go() {
         return
     fi
 
-    GO_VERSION="1.21.6"
+    GO_VERSION="1.25.0"
     GO_TAR="go${GO_VERSION}.linux-amd64.tar.gz"
     GO_URL="https://go.dev/dl/${GO_TAR}"
 
@@ -423,6 +443,7 @@ install_go_dependencies() {
 
     print_info "安装依赖包（可能需要几分钟）..."
 
+    # Web框架和数据库
     go get github.com/gin-gonic/gin@v1.10.0
     go get gorm.io/gorm@v1.25.7
     go get gorm.io/driver/mysql@v1.5.2
@@ -431,9 +452,74 @@ install_go_dependencies() {
     go get golang.org/x/crypto@v0.19.0
     go get github.com/gorilla/websocket@v1.5.1
 
+    # PDF生成和图表库（报表生成模块）
+    print_info "安装PDF生成依赖..."
+    go get github.com/jung-kurt/gofpdf@latest
+    go get github.com/wcharczuk/go-chart/v2@latest
+
     go mod tidy
 
     print_success "Go依赖包安装完成"
+}
+
+# 下载中文字体（用于PDF报表生成）
+download_fonts() {
+    print_info "配置PDF报表中文字体..."
+
+    # 创建字体目录
+    FONT_DIR="fonts"
+    mkdir -p "$FONT_DIR"
+
+    # 字体文件路径
+    FONT_FILE="$FONT_DIR/SourceHanSans-Regular.ttf"
+
+    # 检查字体是否已存在
+    if [ -f "$FONT_FILE" ]; then
+        print_success "中文字体已存在，跳过下载"
+        return
+    fi
+
+    # 下载思源黑体
+    print_info "下载思源黑体字体文件（约15MB，需要一些时间）..."
+
+    FONT_URL="https://github.com/adobe-fonts/source-han-sans/raw/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf"
+
+    if wget -q --show-progress "$FONT_URL" -O "$FONT_FILE" 2>/dev/null; then
+        print_success "中文字体下载成功"
+    else
+        print_warning "字体下载失败，尝试使用备用源..."
+        # 备用：从Gitee镜像下载（如果有）
+        FONT_URL_BACKUP="https://gitee.com/lxgw/source-han-sans/raw/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf"
+
+        if wget -q --show-progress "$FONT_URL_BACKUP" -O "$FONT_FILE" 2>/dev/null; then
+            print_success "中文字体下载成功（备用源）"
+        else
+            print_warning "自动下载字体失败，请手动下载"
+            print_info "手动下载地址: https://github.com/adobe-fonts/source-han-sans/releases"
+            print_info "下载后放置到: $FONT_FILE"
+        fi
+    fi
+
+    # 验证文件大小（字体文件约15MB）
+    if [ -f "$FONT_FILE" ]; then
+        FILE_SIZE=$(stat -f%z "$FONT_FILE" 2>/dev/null || stat -c%s "$FONT_FILE" 2>/dev/null)
+        if [ "$FILE_SIZE" -gt 10000000 ]; then
+            print_success "字体文件验证成功（大小: $(($FILE_SIZE/1024/1024))MB）"
+        else
+            print_warning "字体文件可能不完整（大小: $(($FILE_SIZE/1024))KB）"
+        fi
+    fi
+}
+
+# 创建报表存储目录
+create_report_directories() {
+    print_info "创建报表存储目录..."
+
+    # 创建reports目录
+    mkdir -p reports
+    chmod 755 reports
+
+    print_success "报表目录创建完成: ./reports"
 }
 
 # 显示总结
@@ -446,7 +532,8 @@ show_summary() {
     echo "📦 已安装组件："
     echo "  - Go $(go version | awk '{print $3}')"
     echo "  - MySQL $(mysql -uroot -p123456 -e "SELECT VERSION();" -s -N 2>/dev/null || echo "8.0")"
-    echo "  - Go依赖包（Gin, GORM等）"
+    echo "  - Go依赖包（Gin, GORM, gofpdf, go-chart等）"
+    echo "  - PDF报表生成支持（中文字体、报表目录）"
     echo ""
 
     if [ -f "mysql_config.txt" ]; then
@@ -517,6 +604,12 @@ main() {
 
     # 安装Go依赖
     install_go_dependencies
+
+    # 下载中文字体
+    download_fonts
+
+    # 创建报表目录
+    create_report_directories
 
     # 显示总结
     show_summary

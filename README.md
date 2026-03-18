@@ -3,7 +3,7 @@
 > 基于低空无人机视觉的桥梁表观病害精细化智能检测算法系统
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org/)
 [![Python Version](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python)](https://www.python.org/)
 
 ## 项目简介
@@ -136,7 +136,7 @@ source ~/.bashrc
 ```
 
 **安装内容**：
-- Go 1.21.6
+- Go 1.25.0
 - MySQL 8.0（用户名：root，密码：123456）
 - Go依赖包：Gin, GORM, Sessions, CORS, bcrypt, WebSocket
 
