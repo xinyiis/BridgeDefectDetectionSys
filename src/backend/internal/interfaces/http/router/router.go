@@ -10,6 +10,7 @@ import (
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/external"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/pdf"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/persistence"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/handler"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/middleware"
@@ -108,6 +109,8 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	}
 	defectService := service.NewDefectService(db, defectRepo, bridgeRepo)
 	statsService := persistence.NewStatsService(db)
+	reportRepo := persistence.NewReportRepository(db)
+	reportService := service.NewReportService(db, reportRepo)
 
 	// 3. UseCase 层
 	authUseCase := usecase.NewAuthUseCase(userService)
@@ -118,6 +121,10 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	defectUseCase := usecase.NewDefectUseCase(defectService, fileService)
 	statsUseCase := usecase.NewStatsUseCase(statsService)
 
+	// PDF生成器
+	pdfGenerator := pdf.NewReportGenerator("./fonts/SourceHanSans-Regular.ttf")
+	reportUseCase := usecase.NewReportUseCase(reportService, bridgeService, defectService, pdfGenerator, "./reports")
+
 	// 4. Handler 层
 	authHandler := handler.NewAuthHandler(authUseCase)
 	userHandler := handler.NewUserHandler(userUseCase)
@@ -126,6 +133,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	detectionHandler := handler.NewDetectionHandler(detectionUseCase)
 	defectHandler := handler.NewDefectHandler(defectUseCase)
 	statsHandler := handler.NewStatsHandler(statsUseCase)
+	reportHandler := handler.NewReportHandler(reportUseCase)
 
 	// ========== 路由注册 ==========
 	// API 路由组（/api/v1）
@@ -137,7 +145,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
-	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, defectHandler, statsHandler, bridgeRepo, droneRepo, defectService, cfg)
+	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, defectHandler, statsHandler, reportHandler, bridgeRepo, droneRepo, reportRepo, defectService, cfg)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -168,7 +176,7 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 
 // registerAuthRoutes 注册认证路由
 // 这些接口需要用户登录后才能访问
-func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, defectHandler *handler.DefectHandler, statsHandler *handler.StatsHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, defectService *service.DefectService, cfg *config.Config) {
+func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, defectHandler *handler.DefectHandler, statsHandler *handler.StatsHandler, reportHandler *handler.ReportHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, reportRepo repository.ReportRepository, defectService *service.DefectService, cfg *config.Config) {
 	// ========== 用户认证相关 ==========
 	auth := r.Group("/auth")
 	{
@@ -244,6 +252,23 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 		stats.GET("/bridge-ranking", statsHandler.GetBridgeRanking)             // GET /api/v1/stats/bridge-ranking
 		stats.GET("/recent-detections", statsHandler.GetRecentDetections)       // GET /api/v1/stats/recent-detections
 		stats.GET("/high-risk-alerts", statsHandler.GetHighRiskAlerts)          // GET /api/v1/stats/high-risk-alerts
+	}
+
+	// ========== 报表生成 ==========
+	reports := r.Group("/reports")
+	{
+		// 列表和创建不需要所有权验证
+		reports.GET("", reportHandler.ListReports)    // GET /api/v1/reports
+		reports.POST("", reportHandler.CreateReport)  // POST /api/v1/reports
+
+		// 单个资源操作需要所有权验证
+		reportResource := reports.Group("/:id")
+		reportResource.Use(middleware.ReportOwnershipRequired(reportRepo))
+		{
+			reportResource.GET("", reportHandler.GetReport)               // GET /api/v1/reports/:id
+			reportResource.GET("/download", reportHandler.DownloadReport) // GET /api/v1/reports/:id/download
+			reportResource.DELETE("", reportHandler.DeleteReport)         // DELETE /api/v1/reports/:id
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package persistence
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/dto"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
@@ -34,11 +35,12 @@ func (s *StatsServiceImpl) GetOverview(currentUser *model.User) (*dto.StatsOverv
 	overview = dto.StatsOverview{}
 
 	// 基础统计（子查询）
+	// 注意：drones 表没有 deleted_at 字段，不支持软删除
 	if currentUser.IsAdmin() {
 		s.db.Raw(`
 			SELECT
 				(SELECT COUNT(*) FROM bridges WHERE deleted_at IS NULL) AS bridge_count,
-				(SELECT COUNT(*) FROM drones WHERE deleted_at IS NULL) AS drone_count,
+				(SELECT COUNT(*) FROM drones) AS drone_count,
 				(SELECT COUNT(*) FROM defects WHERE deleted_at IS NULL) AS defect_count,
 				(SELECT COUNT(DISTINCT image_path) FROM defects WHERE deleted_at IS NULL) AS detection_count
 		`).Scan(&overview)
@@ -46,7 +48,7 @@ func (s *StatsServiceImpl) GetOverview(currentUser *model.User) (*dto.StatsOverv
 		s.db.Raw(`
 			SELECT
 				(SELECT COUNT(*) FROM bridges WHERE user_id = ? AND deleted_at IS NULL) AS bridge_count,
-				(SELECT COUNT(*) FROM drones WHERE user_id = ? AND deleted_at IS NULL) AS drone_count,
+				(SELECT COUNT(*) FROM drones WHERE user_id = ?) AS drone_count,
 				(SELECT COUNT(d.id) FROM defects d
 				 JOIN bridges b ON b.id = d.bridge_id
 				 WHERE b.user_id = ? AND d.deleted_at IS NULL) AS defect_count,
@@ -57,12 +59,16 @@ func (s *StatsServiceImpl) GetOverview(currentUser *model.User) (*dto.StatsOverv
 	}
 
 	// 增量统计（今日、本周、昨日）
-	baseQuery := s.buildAuthorizedQuery(currentUser)
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayEnd := todayStart.Add(24 * time.Hour)
+	yesterdayStart := todayStart.Add(-24 * time.Hour)
+	weekStart := todayStart.Add(-7 * 24 * time.Hour)
 
 	var todayDefects, weekDefects, yesterdayDefects int64
-	baseQuery.Where("DATE(defects.detected_at) = CURDATE()").Count(&todayDefects)
-	baseQuery.Where("defects.detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)").Count(&weekDefects)
-	baseQuery.Where("DATE(defects.detected_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)").Count(&yesterdayDefects)
+	s.buildAuthorizedQuery(currentUser).Where("defects.detected_at >= ? AND defects.detected_at < ?", todayStart, todayEnd).Count(&todayDefects)
+	s.buildAuthorizedQuery(currentUser).Where("defects.detected_at >= ?", weekStart).Count(&weekDefects)
+	s.buildAuthorizedQuery(currentUser).Where("defects.detected_at >= ? AND defects.detected_at < ?", yesterdayStart, todayStart).Count(&yesterdayDefects)
 
 	overview.TodayDefects = int(todayDefects)
 	overview.WeekDefects = int(weekDefects)
@@ -99,7 +105,8 @@ func (s *StatsServiceImpl) GetDefectTypeDistribution(currentUser *model.User, da
 	query := s.buildAuthorizedQuery(currentUser)
 
 	if days > 0 {
-		query = query.Where("defects.detected_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)", days)
+		startDate := time.Now().AddDate(0, 0, -days)
+		query = query.Where("defects.detected_at >= ?", startDate)
 	}
 
 	// 3. 聚合查询
@@ -142,12 +149,24 @@ func (s *StatsServiceImpl) GetDefectTrend(currentUser *model.User, days int, gra
 
 	// 2. 构建查询
 	query := s.buildAuthorizedQuery(currentUser)
-	query = query.Where("defects.detected_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)", days)
+	startDate := time.Now().AddDate(0, 0, -days)
+	query = query.Where("defects.detected_at >= ?", startDate)
 
 	// 3. 时间序列查询
+	// 使用 strftime 兼容 SQLite 和 MySQL（通过 date() 函数）
 	var trend []dto.DefectTrend
-	query.Select("DATE(defects.detected_at) AS date, COUNT(*) AS count").
-		Group("DATE(defects.detected_at)").
+
+	// 检测数据库类型
+	dbName := s.db.Dialector.Name()
+	var dateFormat string
+	if dbName == "sqlite" {
+		dateFormat = "strftime('%Y-%m-%d', defects.detected_at)"
+	} else {
+		dateFormat = "DATE(defects.detected_at)"
+	}
+
+	query.Select(dateFormat + " AS date, COUNT(*) AS count").
+		Group(dateFormat).
 		Order("date ASC").
 		Scan(&trend)
 

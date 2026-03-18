@@ -1,0 +1,66 @@
+# Go编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+
+# Go依赖
+/vendor/
+go.work
+
+# 上传文件和生成的内容
+uploads/
+reports/*.pdf
+*.pdf
+
+# 字体文件（通过脚本下载）
+fonts/
+src/backend/fonts/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sql.backup
+
+# 配置文件（包含敏感信息）
+config.local.yaml
+.env
+.env.local
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# Python相关（如果有）
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+
+# Node.js相关（如果有前端）
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock

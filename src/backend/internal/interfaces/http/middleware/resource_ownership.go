@@ -226,3 +226,77 @@ func DefectOwnershipRequired(defectService *service.DefectService) gin.HandlerFu
 		c.Next()
 	}
 }
+
+// ReportOwnershipRequired 验证用户是否有权访问报表资源
+// 功能：
+//   1. 获取当前用户
+//   2. 管理员直接放行（不查数据库）
+//   3. 获取报表ID并查询报表
+//   4. 验证所有权
+//   5. 将报表对象存入上下文（避免Handler重复查询）
+//
+// 参数：
+//   - reportRepo: 报表Repository接口
+//
+// 返回值：
+//   - gin.HandlerFunc: Gin中间件函数
+//
+// 使用示例：
+//   reportResource := reports.Group("/:id")
+//   reportResource.Use(middleware.ReportOwnershipRequired(reportRepo))
+//   {
+//       reportResource.GET("", handler.GetReport)
+//       reportResource.GET("/download", handler.DownloadReport)
+//       reportResource.DELETE("", handler.DeleteReport)
+//   }
+func ReportOwnershipRequired(reportRepo repository.ReportRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 1. 获取当前用户
+		currentUser, exists := c.Get("current_user")
+		if !exists {
+			response.Unauthorized(c)
+			c.Abort()
+			return
+		}
+		user := currentUser.(*model.User)
+
+		// 2. 管理员直接放行（不查数据库）
+		if user.IsAdmin() {
+			c.Next()
+			return
+		}
+
+		// 3. 获取报表ID
+		reportIDStr := c.Param("id")
+		reportID, err := strconv.ParseUint(reportIDStr, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "无效的报表ID")
+			c.Abort()
+			return
+		}
+
+		// 4. 查询报表（验证存在性和所有权）
+		report, err := reportRepo.FindByID(uint(reportID))
+		if err != nil {
+			response.InternalErrorWithDetail(c, "查询报表失败")
+			c.Abort()
+			return
+		}
+		if report == nil {
+			response.NotFound(c, "报表")
+			c.Abort()
+			return
+		}
+
+		// 5. 验证所有权
+		if !report.IsOwnedBy(user.ID) {
+			response.ForbiddenWithMessage(c, "无权访问此报表")
+			c.Abort()
+			return
+		}
+
+		// 6. 将报表信息存入上下文（避免Handler重复查询）
+		c.Set("report", report)
+		c.Next()
+	}
+}

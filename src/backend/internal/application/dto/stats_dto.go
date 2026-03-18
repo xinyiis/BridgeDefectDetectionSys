@@ -51,13 +51,13 @@ type DefectTrendResponse struct {
 
 // BridgeHealthRanking 桥梁健康度排名
 type BridgeHealthRanking struct {
-	BridgeID      uint      `json:"bridge_id"`       // 桥梁ID
-	BridgeName    string    `json:"bridge_name"`     // 桥梁名称
-	DefectCount   int       `json:"defect_count"`    // 缺陷总数
-	HighRiskCount int       `json:"high_risk_count"` // 高危缺陷数 (置信度>0.9)
-	LastDetection time.Time `json:"last_detection"`  // 最近检测时间
-	HealthScore   float64   `json:"health_score"`    // 健康评分 (0-100)
-	HealthLevel   string    `json:"health_level"`    // "优秀" / "良好" / "一般" / "较差" / "危险"
+	BridgeID      uint       `json:"bridge_id"`       // 桥梁ID
+	BridgeName    string     `json:"bridge_name"`     // 桥梁名称
+	DefectCount   int        `json:"defect_count"`    // 缺陷总数
+	HighRiskCount int        `json:"high_risk_count"` // 高危缺陷数 (置信度>0.9)
+	LastDetection *time.Time `json:"last_detection"`  // 最近检测时间（可空）
+	HealthScore   float64    `json:"health_score"`    // 健康评分 (0-100)
+	HealthLevel   string     `json:"health_level"`    // "优秀" / "良好" / "一般" / "较差" / "危险"
 }
 
 // BridgeRankingResponse 排名响应

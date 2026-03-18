@@ -129,3 +129,44 @@ func (s *DefectService) VerifyDefectOwnership(defectID uint, userID uint, isAdmi
 
 	return defect, nil
 }
+
+// ListDefectsByBridgeAndTime 查询指定桥梁和时间范围内的缺陷（用于报表生成）
+// 参数：
+//   - bridgeID: 桥梁ID
+//   - startTime: 开始时间
+//   - endTime: 结束时间
+//   - currentUser: 当前用户
+// 返回：
+//   - []model.Defect: 缺陷列表
+//   - error: 操作错误
+func (s *DefectService) ListDefectsByBridgeAndTime(
+	bridgeID uint,
+	startTime, endTime interface{},
+	currentUser *model.User,
+) ([]model.Defect, error) {
+	// 1. 验证桥梁权限
+	bridge, err := s.bridgeRepo.FindByID(bridgeID)
+	if err != nil {
+		return nil, err
+	}
+	if bridge == nil {
+		return nil, errors.New("桥梁不存在")
+	}
+
+	// 权限验证
+	if !currentUser.IsAdmin() && bridge.UserID != currentUser.ID {
+		return nil, errors.New("无权访问此桥梁的缺陷数据")
+	}
+
+	// 2. 查询缺陷列表（时间范围过滤）
+	var defects []model.Defect
+	err = s.db.Where("bridge_id = ? AND detected_at BETWEEN ? AND ?", bridgeID, startTime, endTime).
+		Order("detected_at DESC").
+		Find(&defects).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return defects, nil
+}
