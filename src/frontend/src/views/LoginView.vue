@@ -1,95 +1,104 @@
 <template>
   <div class="login-container">
-    <div class="auth-card">
+    <div class="login-box">
       <h2>{{ isLoginMode ? '系统登录' : '用户注册' }}</h2>
 
-      <form @submit.prevent="handleSubmit">
-        <div class="form-group">
-          <label>用户名</label>
-          <input v-model="formData.username" type="text" required placeholder="请输入用户名" />
+      <div class="form-container">
+        <div class="form-item">
+          <label>用户名:</label>
+          <input v-model="formData.username" type="text" placeholder="3-50位用户名" />
         </div>
 
-        <div class="form-group">
-          <label>密码</label>
-          <input v-model="formData.password" type="password" required placeholder="请输入密码" />
+        <div class="form-item">
+          <label>密码:</label>
+          <input v-model="formData.password" type="password" placeholder="至少6位密码" />
         </div>
 
-        <div class="form-group" v-if="!isLoginMode">
-          <label>邮箱</label>
-          <input v-model="formData.email" type="email" required placeholder="请输入邮箱" />
+        <template v-if="!isLoginMode">
+          <div class="form-item">
+            <label>真实姓名:</label>
+            <input v-model="formData.real_name" type="text" placeholder="请输入真实姓名" />
+          </div>
+
+          <div class="form-item">
+            <label>邮箱:</label>
+            <input v-model="formData.email" type="email" placeholder="example@qq.com" />
+          </div>
+
+          <div class="form-item">
+            <label>手机号 (可选):</label>
+            <input v-model="formData.phone" type="text" placeholder="11位手机号" />
+          </div>
+        </template>
+
+        <div class="actions">
+          <button class="submit-btn" @click="handleSubmit">
+            {{ isLoginMode ? '立即登录' : '提交注册' }}
+          </button>
+          <button class="switch-btn" @click="isLoginMode = !isLoginMode">
+            {{ isLoginMode ? '没有账号？去注册' : '已有账号？去登录' }}
+          </button>
         </div>
-
-        <button type="submit" class="primary-btn">
-          {{ isLoginMode ? '测试登录' : '测试注册' }}
-        </button>
-      </form>
-
-      <div class="toggle-mode">
-        <a href="#" @click.prevent="isLoginMode = !isLoginMode">
-          {{ isLoginMode ? '没有账号？切换到注册' : '已有账号？切换到登录' }}
-        </a>
       </div>
-    </div>
 
-    <div class="debug-panel">
-      <h3>接口调试结果：</h3>
-      <div class="action-buttons">
-        <button @click="testUserInfo">测试获取当前用户信息</button>
-        <button @click="testLogout" class="danger">测试退出登录</button>
+      <div class="debug-panel">
+        <h3>测试结果预览:</h3>
+        <pre class="result-box">{{ testResult || '等待操作...' }}</pre>
       </div>
-      <pre class="result-box">{{ testResult || '等待操作...' }}</pre>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { login, register, getUserInfo, logout } from '../api/user'
+import { reactive, ref } from 'vue'
+import { register, login } from '../api/user' // 请确保你的api文件路径正确
 
 const isLoginMode = ref(true)
+const testResult = ref('')
+
+// 严格适配后端 dto.RegisterRequest 结构体
 const formData = reactive({
   username: '',
   password: '',
-  email: ''
+  real_name: '', // 后端必填：real_name
+  email: '',     // 后端必填：需符合email格式
+  phone: ''      // 后端可选：11位数字
 })
 
-const testResult = ref('')
-
-// 处理登录/注册提交
 const handleSubmit = async () => {
+  if (!formData.username || !formData.password) {
+    testResult.value = '错误: 请填写用户名和密码'
+    return
+  }
+
   try {
-    testResult.value = '请求中...'
+    testResult.value = '正在请求后端...'
     let res
+
     if (isLoginMode.value) {
-      res = await login({ username: formData.username, password: formData.password })
+      // 登录逻辑
+      res = await login({
+        username: formData.username,
+        password: formData.password
+      })
     } else {
-      res = await register(formData)
+      // 注册逻辑：必须包含 real_name 和 email
+      // 后端有 min 长度限制，前端在这直接发给后端由后端校验
+      res = await register({
+        username: formData.username,
+        password: formData.password,
+        real_name: formData.real_name,
+        email: formData.email,
+        phone: formData.phone || undefined // 如果手机号为空，不传该字段
+      })
     }
-    testResult.value = `[${isLoginMode.value ? '登录' : '注册'}响应]: \n` + JSON.stringify(res, null, 2)
-  } catch (error) {
-    testResult.value = `[请求失败]: \n` + error.message
-  }
-}
 
-// 测试获取信息
-const testUserInfo = async () => {
-  try {
-    testResult.value = '请求中...'
-    const res = await getUserInfo()
-    testResult.value = `[获取用户信息响应]: \n` + JSON.stringify(res, null, 2)
+    testResult.value = `[请求成功]: \n${JSON.stringify(res, null, 2)}`
   } catch (error) {
-    testResult.value = `[获取失败]: \n` + error.message
-  }
-}
-
-// 测试登出
-const testLogout = async () => {
-  try {
-    testResult.value = '请求中...'
-    const res = await logout()
-    testResult.value = `[登出响应]: \n` + JSON.stringify(res, null, 2)
-  } catch (error) {
-    testResult.value = `[登出失败]: \n` + error.message
+    // 捕获后端的 400 详细错误信息 (err.Error())
+    const serverMessage = error.response?.data?.message || error.message
+    testResult.value = `[请求失败]: \n状态码: ${error.response?.status}\n原因: ${serverMessage}`
+    console.error('Full Error:', error)
   }
 }
 </script>
@@ -97,89 +106,71 @@ const testLogout = async () => {
 <style scoped>
 .login-container {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  padding-top: 50px;
-  font-family: sans-serif;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  color: #333;
 }
-.auth-card {
-  width: 350px;
+.login-box {
+  background: white;
   padding: 30px;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  background: white;
-  border: 1px solid #eee;
+  width: 400px;
 }
-.form-group {
+.form-item {
   margin-bottom: 15px;
+  text-align: left;
 }
-.form-group label {
+.form-item label {
   display: block;
   margin-bottom: 5px;
-  font-size: 14px;
-  color: #333;
+  font-weight: bold;
 }
-.form-group input {
+.form-item input {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
+  padding: 8px;
+  border: 1px solid #ddd;
   border-radius: 4px;
   box-sizing: border-box;
 }
-.primary-btn {
-  width: 100%;
-  padding: 12px;
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+.submit-btn {
   background-color: #409eff;
   color: white;
   border: none;
+  padding: 10px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 16px;
-  margin-top: 10px;
 }
-.primary-btn:hover { background-color: #66b1ff; }
-.toggle-mode {
-  text-align: center;
-  margin-top: 15px;
-  font-size: 14px;
-}
-.toggle-mode a {
-  color: #409eff;
-  text-decoration: none;
+.switch-btn {
+  background: none;
+  border: none;
+  color: #666;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .debug-panel {
-  margin-top: 30px;
-  width: 600px;
-  background: #f4f4f5;
-  padding: 20px;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-}
-.action-buttons {
-  margin-bottom: 15px;
-  display: flex;
-  gap: 10px;
-}
-.action-buttons button {
-  padding: 8px 15px;
-  cursor: pointer;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: white;
-}
-.action-buttons button.danger {
-  color: white;
-  background-color: #f56c6c;
-  border-color: #f56c6c;
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
 }
 .result-box {
-  white-space: pre-wrap;
-  word-wrap: break-word;
   background: #282c34;
   color: #abb2bf;
   padding: 15px;
   border-radius: 4px;
-  min-height: 150px;
-  margin: 0;
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 200px;
+  overflow-y: auto;
 }
 </style>
