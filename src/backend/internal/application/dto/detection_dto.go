@@ -7,9 +7,9 @@ import (
 
 // DetectionUploadRequest 图片上传检测请求
 type DetectionUploadRequest struct {
-	Image      *multipart.FileHeader `form:"image" binding:"required"`       // 图片文件
-	BridgeID   uint                  `form:"bridge_id" binding:"required"`   // 关联桥梁ID
-	ModelName  string                `form:"model_name" binding:"required"`  // 模型名称/版本
+	Image      *multipart.FileHeader `form:"image" binding:"required"`            // 图片文件
+	BridgeID   uint                  `form:"bridge_id" binding:"required"`        // 关联桥梁ID
+	ModelName  string                `form:"model_name" binding:"required"`       // 模型名称/版本
 	PixelRatio float64               `form:"pixel_ratio" binding:"required,gt=0"` // 像素实际系数
 }
 

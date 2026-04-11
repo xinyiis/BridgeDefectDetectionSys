@@ -8,16 +8,16 @@ import "time"
 // 使用JSON binding，不涉及文件上传
 type CreateDroneRequest struct {
 	Name      string `json:"name" binding:"required,min=1,max=100"` // 无人机名称（必填，1-100字符）
-	Model     string `json:"model" binding:"max=100"`                // 设备型号（可选，最长100字符）
-	StreamURL string `json:"stream_url" binding:"max=255"`           // 视频流地址（可选，最长255字符）
-	UserID    uint   `json:"-"`                                      // 所属用户ID（由Handler设置）
+	Model     string `json:"model" binding:"max=100"`               // 设备型号（可选，最长100字符）
+	StreamURL string `json:"stream_url" binding:"max=255"`          // 视频流地址（可选，最长255字符）
+	UserID    uint   `json:"-"`                                     // 所属用户ID（由Handler设置）
 }
 
 // UpdateDroneRequest 更新无人机请求
 // 所有字段都是可选的
 type UpdateDroneRequest struct {
-	Name      string `json:"name" binding:"omitempty,max=100"`      // 无人机名称（可选）
-	Model     string `json:"model" binding:"omitempty,max=100"`     // 设备型号（可选）
+	Name      string `json:"name" binding:"omitempty,max=100"`       // 无人机名称（可选）
+	Model     string `json:"model" binding:"omitempty,max=100"`      // 设备型号（可选）
 	StreamURL string `json:"stream_url" binding:"omitempty,max=255"` // 视频流地址（可选）
 }
 

@@ -10,10 +10,10 @@ import (
 
 // Response 标准响应结构
 type Response struct {
-	Code    int         `json:"code"`              // 状态码（200表示成功，其他表示错误）
-	Message string      `json:"message"`           // 响应消息
-	Data    interface{} `json:"data,omitempty"`    // 响应数据（成功时返回）
-	Error   string      `json:"error,omitempty"`   // 错误详情（失败时返回）
+	Code    int         `json:"code"`            // 状态码（200表示成功，其他表示错误）
+	Message string      `json:"message"`         // 响应消息
+	Data    interface{} `json:"data,omitempty"`  // 响应数据（成功时返回）
+	Error   string      `json:"error,omitempty"` // 错误详情（失败时返回）
 }
 
 // Success 返回成功响应

@@ -75,3 +75,46 @@ func (s *MockPythonService) DetectDefect(imagePath, modelName string, pixelRatio
 		ProcessingTime: 0.100 + rand.Float64()*0.1, // 0.1-0.2秒
 	}, nil
 }
+
+// Detect 模拟视频帧检测。
+func (s *MockPythonService) Detect(string, *service.DetectRequest) (*service.DetectResult, error) {
+	mockImage := []byte("mock_video_detection_image")
+
+	return &service.DetectResult{
+		Status:    "success",
+		ModelUsed: "baseline",
+		YOLOBBoxes: []service.BBoxItem{
+			{
+				BoxID:      1,
+				ClassIdx:   0,
+				ClassName:  "Crack",
+				YOLOCoords: [4]float64{0.5, 0.5, 0.2, 0.1},
+				Confidence: 0.91,
+			},
+		},
+		ImageResult: base64.StdEncoding.EncodeToString(mockImage),
+	}, nil
+}
+
+// Preprocess 模拟图像预处理。
+func (s *MockPythonService) Preprocess(string, string) (*service.PreprocessResult, error) {
+	return &service.PreprocessResult{
+		Status:      "success",
+		ImageBase64: base64.StdEncoding.EncodeToString([]byte("mock_preprocess_image")),
+	}, nil
+}
+
+// Segment 模拟实例分割。
+func (s *MockPythonService) Segment(string, *service.SegmentRequest) (*service.SegmentResult, error) {
+	return &service.SegmentResult{
+		Status:      "success",
+		FusionImage: base64.StdEncoding.EncodeToString([]byte("mock_segment_image")),
+		IndividualMasks: []service.IndividualMask{
+			{
+				BoxIndex:   0,
+				Label:      "裂缝",
+				MaskBase64: base64.StdEncoding.EncodeToString([]byte("mock_mask")),
+			},
+		},
+	}, nil
+}

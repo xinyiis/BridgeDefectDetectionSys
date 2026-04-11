@@ -17,6 +17,7 @@ type UserUseCase struct {
 // NewUserUseCase 创建用户管理用例实例
 // 参数：
 //   - userService: 用户领域服务
+//
 // 返回：
 //   - *UserUseCase: 用户管理用例实例
 func NewUserUseCase(userService *service.UserService) *UserUseCase {
@@ -28,6 +29,7 @@ func NewUserUseCase(userService *service.UserService) *UserUseCase {
 // GetUserInfo 获取用户信息
 // 参数：
 //   - userID: 用户ID
+//
 // 返回：
 //   - *dto.UserResponse: 用户信息响应
 //   - error: 操作错误
@@ -56,6 +58,7 @@ func (uc *UserUseCase) GetUserInfo(userID uint) (*dto.UserResponse, error) {
 // 参数：
 //   - userID: 用户ID
 //   - req: 更新请求DTO
+//
 // 返回：
 //   - *dto.UserResponse: 更新后的用户信息
 //   - error: 操作错误
@@ -101,6 +104,7 @@ func (uc *UserUseCase) UpdateUserInfo(userID uint, req *dto.UpdateUserRequest) (
 // DeleteUser 删除用户
 // 参数：
 //   - userID: 用户ID
+//
 // 返回：
 //   - error: 操作错误
 func (uc *UserUseCase) DeleteUser(userID uint) error {
@@ -111,6 +115,7 @@ func (uc *UserUseCase) DeleteUser(userID uint) error {
 // 参数：
 //   - page: 页码
 //   - pageSize: 每页数量
+//
 // 返回：
 //   - *dto.UserListResponse: 用户列表响应
 //   - error: 操作错误
@@ -155,6 +160,7 @@ func (uc *UserUseCase) ListUsers(page, pageSize int) (*dto.UserListResponse, err
 // PromoteToAdmin 提升用户为管理员
 // 参数：
 //   - req: 提升请求DTO
+//
 // 返回：
 //   - *dto.UserResponse: 更新后的用户信息
 //   - error: 操作错误

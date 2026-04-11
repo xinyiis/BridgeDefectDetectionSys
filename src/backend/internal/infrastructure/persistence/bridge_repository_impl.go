@@ -21,6 +21,7 @@ type BridgeRepositoryImpl struct {
 // NewBridgeRepository 创建桥梁Repository实例
 // 参数：
 //   - db: GORM数据库连接
+//
 // 返回：
 //   - repository.BridgeRepository: 桥梁Repository接口
 func NewBridgeRepository(db *gorm.DB) repository.BridgeRepository {

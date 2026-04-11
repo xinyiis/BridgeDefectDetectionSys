@@ -19,6 +19,7 @@ type UserService struct {
 // NewUserService 创建用户服务实例
 // 参数：
 //   - userRepo: 用户Repository接口
+//
 // 返回：
 //   - *UserService: 用户服务实例
 func NewUserService(userRepo repository.UserRepository) *UserService {
@@ -30,6 +31,7 @@ func NewUserService(userRepo repository.UserRepository) *UserService {
 // HashPassword 使用bcrypt加密密码
 // 参数：
 //   - password: 明文密码
+//
 // 返回：
 //   - string: 加密后的密码
 //   - error: 加密错误
@@ -45,6 +47,7 @@ func (s *UserService) HashPassword(password string) (string, error) {
 // 参数：
 //   - hashedPassword: 加密后的密码（数据库存储）
 //   - password: 用户输入的明文密码
+//
 // 返回：
 //   - bool: true表示密码正确，false表示密码错误
 func (s *UserService) VerifyPassword(hashedPassword, password string) bool {
@@ -55,6 +58,7 @@ func (s *UserService) VerifyPassword(hashedPassword, password string) bool {
 // CreateUser 创建新用户（包含密码加密）
 // 参数：
 //   - user: 用户实体（密码为明文）
+//
 // 返回：
 //   - error: 操作错误
 func (s *UserService) CreateUser(user *model.User) error {
@@ -96,6 +100,7 @@ func (s *UserService) CreateUser(user *model.User) error {
 // 参数：
 //   - username: 用户名
 //   - password: 明文密码
+//
 // 返回：
 //   - *model.User: 用户实体（验证成功）
 //   - error: 验证失败错误
@@ -121,6 +126,7 @@ func (s *UserService) AuthenticateUser(username, password string) (*model.User, 
 // 参数：
 //   - user: 用户实体（包含更新后的数据）
 //   - newPassword: 新密码（如果为空则不更新密码）
+//
 // 返回：
 //   - error: 操作错误
 func (s *UserService) UpdateUser(user *model.User, newPassword string) error {
@@ -155,6 +161,7 @@ func (s *UserService) ListUsers(page, pageSize int) ([]model.User, int64, error)
 // PromoteToAdmin 提升用户为管理员
 // 参数：
 //   - userID: 用户ID
+//
 // 返回：
 //   - error: 操作错误
 func (s *UserService) PromoteToAdmin(userID uint) error {

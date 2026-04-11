@@ -18,6 +18,7 @@ type ReportRepositoryImpl struct {
 // NewReportRepository 创建报表仓储实例
 // 参数：
 //   - db: GORM数据库实例
+//
 // 返回：
 //   - repository.ReportRepository: 报表仓储接口
 func NewReportRepository(db *gorm.DB) repository.ReportRepository {

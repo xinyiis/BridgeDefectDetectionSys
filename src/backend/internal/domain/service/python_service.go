@@ -1,7 +1,10 @@
 // Package service 定义领域服务接口
 package service
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"math"
+)
 
 // PythonService Python检测服务接口
 // 提供AI模型检测功能的抽象接口，支持Mock和HTTP两种实现
@@ -15,15 +18,24 @@ type PythonService interface {
 	//   - *PythonDetectionResult: 检测结果（包含多个缺陷）
 	//   - error: 错误信息
 	DetectDefect(imagePath, modelName string, pixelRatio float64) (*PythonDetectionResult, error)
+
+	// Detect 调用 YOLO 目标检测接口。
+	Detect(imagePath string, req *DetectRequest) (*DetectResult, error)
+
+	// Preprocess 调用图像预处理接口。
+	Preprocess(imagePath string, mode string) (*PreprocessResult, error)
+
+	// Segment 调用实例分割接口。
+	Segment(imagePath string, req *SegmentRequest) (*SegmentResult, error)
 }
 
 // PythonDetectionResult Python检测返回结果
 type PythonDetectionResult struct {
-	Success        bool              `json:"success"`         // 是否成功
-	TotalDefects   int               `json:"total_defects"`   // 检测到的缺陷总数
-	Defects        []DefectDetection `json:"defects"`         // 缺陷列表
-	ResultImage    string            `json:"result_image"`    // 结果图base64（可选）
-	ProcessingTime float64           `json:"processing_time"` // 处理时间（秒）
+	Success        bool              `json:"success"`                 // 是否成功
+	TotalDefects   int               `json:"total_defects"`           // 检测到的缺陷总数
+	Defects        []DefectDetection `json:"defects"`                 // 缺陷列表
+	ResultImage    string            `json:"result_image"`            // 结果图base64（可选）
+	ProcessingTime float64           `json:"processing_time"`         // 处理时间（秒）
 	ErrorMessage   string            `json:"error_message,omitempty"` // 错误信息
 }
 
@@ -45,8 +57,102 @@ type BBoxData struct {
 	Height int `json:"height"` // 高度（像素）
 }
 
+// DetectRequest YOLO 检测请求。
+type DetectRequest struct {
+	ModelName string  // 模型名称
+	Conf      float64 // 置信度阈值
+}
+
+// SegmentRequest 实例分割请求。
+type SegmentRequest struct {
+	BBoxesJSON string  // bbox JSON 字符串
+	Alpha      float64 // 掩码透明度
+}
+
+// PreprocessResult 图像预处理响应。
+type PreprocessResult struct {
+	Status      string `json:"status"`
+	ImageBase64 string `json:"image_base64"`
+}
+
+// DetectResult 检测响应。
+type DetectResult struct {
+	Status      string     `json:"status"`
+	ModelUsed   string     `json:"model_used"`
+	YOLOBBoxes  []BBoxItem `json:"yolo_bboxes"`
+	ImageResult string     `json:"image_results"`
+}
+
+// BBoxItem 单个检测框。
+type BBoxItem struct {
+	BoxID      int        `json:"box_id"`
+	ClassIdx   int        `json:"class_idx"`
+	ClassName  string     `json:"class_name"`
+	YOLOCoords [4]float64 `json:"yolo_coords"`
+	Confidence float64    `json:"confidence"`
+}
+
+// SegmentResult 实例分割响应。
+type SegmentResult struct {
+	Status          string           `json:"status"`
+	FusionImage     string           `json:"fusion_image"`
+	IndividualMasks []IndividualMask `json:"individual_masks"`
+}
+
+// IndividualMask 单个分割掩码。
+type IndividualMask struct {
+	BoxIndex   int    `json:"box_index"`
+	Label      string `json:"label"`
+	MaskBase64 string `json:"mask_base64"`
+}
+
+// ClassNameToChinese 病害类别映射。
+var ClassNameToChinese = map[int]string{
+	0: "裂缝",
+	1: "破损",
+	2: "剥落",
+	3: "孔洞",
+	4: "钢筋外露",
+	5: "渗水",
+}
+
 // BBoxJSON 转换为JSON字符串（用于存储到数据库）
 func (d *DefectDetection) BBoxJSON() string {
 	data, _ := json.Marshal(d.BBox)
 	return string(data)
+}
+
+// CalculatePhysicalDimensions 将 YOLO 归一化坐标转换为像素框和物理尺寸。
+func CalculatePhysicalDimensions(
+	coords [4]float64,
+	imgW, imgH int,
+	pixelRatio float64,
+) (x, y, w, h int, length, width, area float64) {
+	boxW := coords[2] * float64(imgW)
+	boxH := coords[3] * float64(imgH)
+	left := (coords[0] - coords[2]/2) * float64(imgW)
+	top := (coords[1] - coords[3]/2) * float64(imgH)
+
+	x = int(math.Round(left))
+	y = int(math.Round(top))
+	w = int(math.Round(boxW))
+	h = int(math.Round(boxH))
+
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	if w < 0 {
+		w = 0
+	}
+	if h < 0 {
+		h = 0
+	}
+
+	length = float64(w) * pixelRatio
+	width = float64(h) * pixelRatio
+	area = length * width
+	return
 }

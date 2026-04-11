@@ -15,9 +15,9 @@ import (
 // BridgeService 桥梁领域服务
 // 处理桥梁相关的核心业务逻辑
 type BridgeService struct {
-	db          *gorm.DB                     // GORM数据库连接
-	bridgeRepo  repository.BridgeRepository  // 桥梁仓储
-	fileService FileService                  // 文件服务
+	db          *gorm.DB                    // GORM数据库连接
+	bridgeRepo  repository.BridgeRepository // 桥梁仓储
+	fileService FileService                 // 文件服务
 }
 
 // NewBridgeService 创建桥梁服务实例
@@ -25,6 +25,7 @@ type BridgeService struct {
 //   - db: GORM数据库连接
 //   - bridgeRepo: 桥梁Repository接口
 //   - fileService: 文件服务接口
+//
 // 返回：
 //   - *BridgeService: 桥梁服务实例
 func NewBridgeService(db *gorm.DB, bridgeRepo repository.BridgeRepository, fileService FileService) *BridgeService {
@@ -38,6 +39,7 @@ func NewBridgeService(db *gorm.DB, bridgeRepo repository.BridgeRepository, fileS
 // CreateBridge 创建桥梁
 // 参数：
 //   - bridge: 桥梁实体
+//
 // 返回：
 //   - error: 操作错误
 func (s *BridgeService) CreateBridge(bridge *model.Bridge) error {
@@ -57,6 +59,7 @@ func (s *BridgeService) CreateBridge(bridge *model.Bridge) error {
 // GetByID 根据ID获取桥梁
 // 参数：
 //   - id: 桥梁ID
+//
 // 返回：
 //   - *model.Bridge: 桥梁实体
 //   - error: 操作错误
@@ -70,6 +73,7 @@ func (s *BridgeService) GetByID(id uint) (*model.Bridge, error) {
 //   - page: 页码
 //   - pageSize: 每页数量
 //   - status: 状态过滤（可选）
+//
 // 返回：
 //   - []model.Bridge: 桥梁列表
 //   - int64: 总数量
@@ -119,6 +123,7 @@ func (s *BridgeService) ListBridges(currentUser *model.User, page, pageSize int,
 // UpdateBridge 更新桥梁信息
 // 参数：
 //   - bridge: 桥梁实体（包含更新后的数据）
+//
 // 返回：
 //   - error: 操作错误
 func (s *BridgeService) UpdateBridge(bridge *model.Bridge) error {
@@ -129,6 +134,7 @@ func (s *BridgeService) UpdateBridge(bridge *model.Bridge) error {
 // 参数：
 //   - bridgeID: 桥梁ID
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - error: 操作错误
 func (s *BridgeService) DeleteBridge(bridgeID uint, currentUser *model.User) error {

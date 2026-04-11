@@ -19,6 +19,7 @@ type UserRepositoryImpl struct {
 // NewUserRepository 创建用户Repository实例
 // 参数：
 //   - db: GORM数据库连接
+//
 // 返回：
 //   - repository.UserRepository: 用户Repository接口
 func NewUserRepository(db *gorm.DB) repository.UserRepository {

@@ -18,6 +18,7 @@ type DefectRepositoryImpl struct {
 // NewDefectRepository 创建缺陷Repository实例
 // 参数：
 //   - db: GORM数据库连接
+//
 // 返回：
 //   - repository.DefectRepository: 缺陷Repository接口
 func NewDefectRepository(db *gorm.DB) repository.DefectRepository {
@@ -120,4 +121,9 @@ func (r *DefectRepositoryImpl) ListByBridgeID(bridgeID uint, page, pageSize int)
 	}
 
 	return defects, total, nil
+}
+
+// Update 更新缺陷记录。
+func (r *DefectRepositoryImpl) Update(defect *model.Defect) error {
+	return r.db.Save(defect).Error
 }

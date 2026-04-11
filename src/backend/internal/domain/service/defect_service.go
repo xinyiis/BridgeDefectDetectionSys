@@ -3,6 +3,7 @@ package service
 
 import (
 	"errors"
+	"time"
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
@@ -12,9 +13,24 @@ import (
 // DefectService 缺陷领域服务
 // 处理缺陷相关的核心业务逻辑
 type DefectService struct {
-	db         *gorm.DB                   // GORM数据库连接
+	db         *gorm.DB                    // GORM数据库连接
 	defectRepo repository.DefectRepository // 缺陷仓储
 	bridgeRepo repository.BridgeRepository // 桥梁仓储（用于验证桥梁存在性）
+}
+
+// DefectEvidenceUpdate 视频轨迹确认后对历史缺陷的证据更新。
+type DefectEvidenceUpdate struct {
+	LastSeenAt        time.Time
+	ObservationCount  int
+	BestFramePath     string
+	BestResultPath    string
+	BestConfidence    float64
+	FinalBBox         string
+	FinalLength       float64
+	FinalWidth        float64
+	FinalArea         float64
+	MeasurementSource string
+	MeasurementStatus string
 }
 
 // NewDefectService 创建缺陷服务实例
@@ -22,6 +38,7 @@ type DefectService struct {
 //   - db: GORM数据库连接
 //   - defectRepo: 缺陷Repository接口
 //   - bridgeRepo: 桥梁Repository接口
+//
 // 返回：
 //   - *DefectService: 缺陷服务实例
 func NewDefectService(db *gorm.DB, defectRepo repository.DefectRepository, bridgeRepo repository.BridgeRepository) *DefectService {
@@ -35,6 +52,7 @@ func NewDefectService(db *gorm.DB, defectRepo repository.DefectRepository, bridg
 // CreateDefect 创建缺陷记录
 // 参数：
 //   - defect: 缺陷实体
+//
 // 返回：
 //   - error: 操作错误
 func (s *DefectService) CreateDefect(defect *model.Defect) error {
@@ -47,6 +65,19 @@ func (s *DefectService) CreateDefect(defect *model.Defect) error {
 		return errors.New("桥梁不存在")
 	}
 
+	if defect.SourceType == "" {
+		defect.SourceType = "image"
+	}
+	if defect.MeasurementSource == "" {
+		defect.MeasurementSource = "unknown"
+	}
+	if defect.MeasurementStatus == "" {
+		defect.MeasurementStatus = "pending"
+	}
+	if defect.ObservationCount == 0 {
+		defect.ObservationCount = 1
+	}
+
 	// 2. 创建缺陷记录
 	return s.defectRepo.Create(defect)
 }
@@ -54,6 +85,7 @@ func (s *DefectService) CreateDefect(defect *model.Defect) error {
 // GetDefect 根据ID获取缺陷
 // 参数：
 //   - id: 缺陷ID
+//
 // 返回：
 //   - *model.Defect: 缺陷实体（包含关联的Bridge信息）
 //   - error: 操作错误
@@ -64,6 +96,7 @@ func (s *DefectService) GetDefect(id uint) (*model.Defect, error) {
 // ListDefects 分页获取缺陷列表（带权限过滤）
 // 参数：
 //   - filters: 过滤条件（包含用户信息）
+//
 // 返回：
 //   - []model.Defect: 缺陷列表
 //   - int64: 总数量
@@ -84,10 +117,74 @@ func (s *DefectService) ListDefects(filters repository.DefectListFilters) ([]mod
 // DeleteDefect 删除缺陷（软删除）
 // 参数：
 //   - id: 缺陷ID
+//
 // 返回：
 //   - error: 操作错误
 func (s *DefectService) DeleteDefect(id uint) error {
 	return s.defectRepo.Delete(id)
+}
+
+// ConfirmVideoDefect 首次确认视频缺陷并写入历史缺陷表。
+func (s *DefectService) ConfirmVideoDefect(defect *model.Defect) (*model.Defect, error) {
+	if defect == nil {
+		return nil, errors.New("缺陷不能为空")
+	}
+
+	if defect.SourceType == "" {
+		defect.SourceType = "video"
+	}
+	if defect.FirstSeenAt == nil {
+		detectedAt := defect.DetectedAt
+		defect.FirstSeenAt = &detectedAt
+	}
+	if defect.LastSeenAt == nil {
+		lastSeenAt := defect.DetectedAt
+		defect.LastSeenAt = &lastSeenAt
+	}
+
+	if err := s.CreateDefect(defect); err != nil {
+		return nil, err
+	}
+
+	return defect, nil
+}
+
+// UpdateVideoDefectEvidence 更新视频缺陷的最佳证据与统计信息。
+func (s *DefectService) UpdateVideoDefectEvidence(defectID uint, update *DefectEvidenceUpdate) error {
+	if update == nil {
+		return errors.New("更新内容不能为空")
+	}
+
+	defect, err := s.defectRepo.FindByID(defectID)
+	if err != nil {
+		return err
+	}
+	if defect == nil {
+		return errors.New("缺陷不存在")
+	}
+
+	defect.LastSeenAt = &update.LastSeenAt
+	defect.ObservationCount = update.ObservationCount
+	defect.Confidence = update.BestConfidence
+	if update.FinalBBox != "" {
+		defect.BBox = update.FinalBBox
+	}
+	defect.Length = update.FinalLength
+	defect.Width = update.FinalWidth
+	defect.Area = update.FinalArea
+	defect.MeasurementSource = update.MeasurementSource
+	defect.MeasurementStatus = update.MeasurementStatus
+
+	if update.BestFramePath != "" {
+		defect.BestFramePath = update.BestFramePath
+		defect.ImagePath = update.BestFramePath
+	}
+	if update.BestResultPath != "" {
+		defect.BestResultPath = update.BestResultPath
+		defect.ResultPath = update.BestResultPath
+	}
+
+	return s.defectRepo.Update(defect)
 }
 
 // VerifyDefectOwnership 验证缺陷所有权（用于中间件）
@@ -95,6 +192,7 @@ func (s *DefectService) DeleteDefect(id uint) error {
 //   - defectID: 缺陷ID
 //   - userID: 用户ID
 //   - isAdmin: 是否为管理员
+//
 // 返回：
 //   - *model.Defect: 缺陷实体（验证通过）
 //   - error: 权限错误
@@ -136,6 +234,7 @@ func (s *DefectService) VerifyDefectOwnership(defectID uint, userID uint, isAdmi
 //   - startTime: 开始时间
 //   - endTime: 结束时间
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - []model.Defect: 缺陷列表
 //   - error: 操作错误

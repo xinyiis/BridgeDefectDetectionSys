@@ -13,8 +13,8 @@ import (
 // DroneService 无人机领域服务
 // 处理无人机相关的核心业务逻辑
 type DroneService struct {
-	db        *gorm.DB                    // GORM数据库连接
-	droneRepo repository.DroneRepository  // 无人机仓储
+	db        *gorm.DB                   // GORM数据库连接
+	droneRepo repository.DroneRepository // 无人机仓储
 }
 
 // NewDroneService 创建无人机服务实例
