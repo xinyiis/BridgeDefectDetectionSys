@@ -20,6 +20,7 @@ type UserHandler struct {
 // NewUserHandler 创建用户管理处理器实例
 // 参数：
 //   - userUseCase: 用户管理用例
+//
 // 返回：
 //   - *UserHandler: 用户管理处理器实例
 func NewUserHandler(userUseCase *usecase.UserUseCase) *UserHandler {

@@ -19,6 +19,7 @@ type BridgeUseCase struct {
 // NewBridgeUseCase 创建桥梁用例实例
 // 参数：
 //   - bridgeService: 桥梁领域服务
+//
 // 返回：
 //   - *BridgeUseCase: 桥梁用例实例
 func NewBridgeUseCase(bridgeService *service.BridgeService) *BridgeUseCase {
@@ -30,6 +31,7 @@ func NewBridgeUseCase(bridgeService *service.BridgeService) *BridgeUseCase {
 // CreateBridge 创建桥梁
 // 参数：
 //   - req: 创建桥梁请求DTO
+//
 // 返回：
 //   - *dto.BridgeResponse: 桥梁信息响应
 //   - error: 操作错误
@@ -63,6 +65,7 @@ func (uc *BridgeUseCase) CreateBridge(req *dto.CreateBridgeRequest) (*dto.Bridge
 // GetBridge 获取桥梁详情
 // 参数：
 //   - id: 桥梁ID
+//
 // 返回：
 //   - *dto.BridgeResponse: 桥梁信息响应
 //   - error: 操作错误
@@ -84,6 +87,7 @@ func (uc *BridgeUseCase) GetBridge(id uint) (*dto.BridgeResponse, error) {
 //   - page: 页码
 //   - pageSize: 每页数量
 //   - status: 状态过滤
+//
 // 返回：
 //   - *dto.BridgeListResponse: 桥梁列表响应
 //   - error: 操作错误
@@ -112,6 +116,7 @@ func (uc *BridgeUseCase) ListBridges(currentUser *model.User, page, pageSize int
 // 参数：
 //   - id: 桥梁ID
 //   - req: 更新桥梁请求DTO
+//
 // 返回：
 //   - *dto.BridgeResponse: 更新后的桥梁信息
 //   - error: 操作错误
@@ -173,6 +178,7 @@ func (uc *BridgeUseCase) UpdateBridge(id uint, req *dto.UpdateBridgeRequest) (*d
 // 参数：
 //   - id: 桥梁ID
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - error: 操作错误
 func (uc *BridgeUseCase) DeleteBridge(id uint, currentUser *model.User) error {

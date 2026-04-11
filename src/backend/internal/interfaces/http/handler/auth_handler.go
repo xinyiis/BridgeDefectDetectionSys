@@ -20,6 +20,7 @@ type AuthHandler struct {
 // NewAuthHandler 创建认证处理器实例
 // 参数：
 //   - authUseCase: 认证用例
+//
 // 返回：
 //   - *AuthHandler: 认证处理器实例
 func NewAuthHandler(authUseCase *usecase.AuthUseCase) *AuthHandler {

@@ -19,6 +19,7 @@ type DefectHandler struct {
 // NewDefectHandler 创建缺陷Handler实例
 // 参数：
 //   - defectUseCase: 缺陷用例
+//
 // 返回：
 //   - *DefectHandler: 缺陷Handler实例
 func NewDefectHandler(defectUseCase *usecase.DefectUseCase) *DefectHandler {

@@ -25,10 +25,10 @@ type UpdateUserRequest struct {
 
 // UserListResponse 用户列表响应
 type UserListResponse struct {
-	Total    int64           `json:"total"`     // 总数
-	Page     int             `json:"page"`      // 当前页码
-	PageSize int             `json:"page_size"` // 每页数量
-	Users    []UserResponse  `json:"users"`     // 用户列表
+	Total    int64          `json:"total"`     // 总数
+	Page     int            `json:"page"`      // 当前页码
+	PageSize int            `json:"page_size"` // 每页数量
+	Users    []UserResponse `json:"users"`     // 用户列表
 }
 
 // PromoteUserRequest 提升用户为管理员请求

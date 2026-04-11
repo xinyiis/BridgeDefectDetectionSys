@@ -17,6 +17,7 @@ type AuthUseCase struct {
 // NewAuthUseCase 创建认证用例实例
 // 参数：
 //   - userService: 用户领域服务
+//
 // 返回：
 //   - *AuthUseCase: 认证用例实例
 func NewAuthUseCase(userService *service.UserService) *AuthUseCase {
@@ -28,6 +29,7 @@ func NewAuthUseCase(userService *service.UserService) *AuthUseCase {
 // Register 用户注册
 // 参数：
 //   - req: 注册请求DTO
+//
 // 返回：
 //   - *dto.UserResponse: 用户信息响应（脱敏）
 //   - error: 操作错误
@@ -54,6 +56,7 @@ func (uc *AuthUseCase) Register(req *dto.RegisterRequest) (*dto.UserResponse, er
 // Login 用户登录
 // 参数：
 //   - req: 登录请求DTO
+//
 // 返回：
 //   - *dto.LoginResponse: 登录响应（包含用户信息）
 //   - error: 操作错误
@@ -74,6 +77,7 @@ func (uc *AuthUseCase) Login(req *dto.LoginRequest) (*dto.LoginResponse, error) 
 // toUserResponse 将User实体转换为UserResponse DTO（脱敏）
 // 参数：
 //   - user: 用户实体
+//
 // 返回：
 //   - *dto.UserResponse: 用户响应DTO
 func (uc *AuthUseCase) toUserResponse(user *model.User) *dto.UserResponse {

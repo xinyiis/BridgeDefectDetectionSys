@@ -573,8 +573,8 @@ func TestGetHighRiskAlerts_Success(t *testing.T) {
 	bridge := createStatsTestBridge(db, user.ID, "测试桥梁")
 
 	// 创建不同风险等级的缺陷
-	createStatsTestDefect(db, bridge.ID, "裂缝", 0.96, 0.12, time.Now()) // 紧急：confidence≥0.95 AND area≥0.1
-	createStatsTestDefect(db, bridge.ID, "剥落", 0.93, 0.08, time.Now()) // 严重：confidence≥0.90 OR area≥0.05
+	createStatsTestDefect(db, bridge.ID, "裂缝", 0.96, 0.12, time.Now())   // 紧急：confidence≥0.95 AND area≥0.1
+	createStatsTestDefect(db, bridge.ID, "剥落", 0.93, 0.08, time.Now())   // 严重：confidence≥0.90 OR area≥0.05
 	createStatsTestDefect(db, bridge.ID, "钢筋锈蚀", 0.88, 0.03, time.Now()) // 高危：confidence≥0.85 OR area≥0.02
 	createStatsTestDefect(db, bridge.ID, "表面损伤", 0.75, 0.01, time.Now()) // 一般：不满足高危条件
 

@@ -60,10 +60,10 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 //   - gin.HandlerFunc: Gin 中间件函数
 //
 // 工作流程：
-//   1. 从 Session 中获取用户ID
-//   2. 如果没有用户ID，返回 401 错误
-//   3. 从数据库加载用户信息
-//   4. 将用户信息存入 Context，供后续 handler 使用
+//  1. 从 Session 中获取用户ID
+//  2. 如果没有用户ID，返回 401 错误
+//  3. 从数据库加载用户信息
+//  4. 将用户信息存入 Context，供后续 handler 使用
 //
 // 使用示例：
 //
@@ -116,9 +116,9 @@ func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 //   - gin.HandlerFunc: Gin 中间件函数
 //
 // 工作流程：
-//   1. 从 Context 获取当前用户（由 AuthRequired 中间件设置）
-//   2. 检查用户角色是否为 admin
-//   3. 如果不是管理员，返回 403 错误
+//  1. 从 Context 获取当前用户（由 AuthRequired 中间件设置）
+//  2. 检查用户角色是否为 admin
+//  3. 如果不是管理员，返回 403 错误
 //
 // 使用示例：
 //
@@ -167,10 +167,10 @@ func AdminRequired() gin.HandlerFunc {
 //   - gin.HandlerFunc: Gin 中间件函数
 //
 // 工作流程：
-//   1. 获取当前用户
-//   2. 如果是管理员，直接放行
-//   3. 获取资源ID（从 URL 参数）
-//   4. 查询资源，检查 user_id 是否匹配
+//  1. 获取当前用户
+//  2. 如果是管理员，直接放行
+//  3. 获取资源ID（从 URL 参数）
+//  4. 查询资源，检查 user_id 是否匹配
 //
 // 使用示例：
 //

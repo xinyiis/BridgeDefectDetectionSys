@@ -54,9 +54,9 @@ func InitDatabase(cfg *config.Config) *gorm.DB {
 	}
 
 	// 配置连接池参数
-	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConns)                  // 最大空闲连接数
-	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConns)                  // 最大打开连接数
-	sqlDB.SetConnMaxLifetime(cfg.Database.GetConnMaxLifetime())       // 连接最大生命周期
+	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConns)            // 最大空闲连接数
+	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConns)            // 最大打开连接数
+	sqlDB.SetConnMaxLifetime(cfg.Database.GetConnMaxLifetime()) // 连接最大生命周期
 
 	// 4. 测试数据库连接
 	if err := sqlDB.Ping(); err != nil {
@@ -88,6 +88,8 @@ func AutoMigrate(db *gorm.DB) {
 		&model.Bridge{},
 		&model.Drone{},
 		&model.Defect{},
+		&model.VideoAnalysisTask{},
+		&model.DefectObservation{},
 	}
 
 	// 执行迁移

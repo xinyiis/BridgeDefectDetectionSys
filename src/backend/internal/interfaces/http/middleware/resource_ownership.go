@@ -14,11 +14,11 @@ import (
 
 // BridgeOwnershipRequired 验证用户是否有权访问桥梁资源
 // 功能：
-//   1. 获取当前用户
-//   2. 管理员直接放行（不查数据库）
-//   3. 获取桥梁ID并查询桥梁
-//   4. 验证所有权
-//   5. 将桥梁对象存入上下文（避免Handler重复查询）
+//  1. 获取当前用户
+//  2. 管理员直接放行（不查数据库）
+//  3. 获取桥梁ID并查询桥梁
+//  4. 验证所有权
+//  5. 将桥梁对象存入上下文（避免Handler重复查询）
 //
 // 参数：
 //   - bridgeRepo: 桥梁Repository接口
@@ -27,13 +27,14 @@ import (
 //   - gin.HandlerFunc: Gin中间件函数
 //
 // 使用示例：
-//   bridgeResource := bridges.Group("/:id")
-//   bridgeResource.Use(middleware.BridgeOwnershipRequired(bridgeRepo))
-//   {
-//       bridgeResource.GET("", handler.GetBridge)
-//       bridgeResource.PUT("", handler.UpdateBridge)
-//       bridgeResource.DELETE("", handler.DeleteBridge)
-//   }
+//
+//	bridgeResource := bridges.Group("/:id")
+//	bridgeResource.Use(middleware.BridgeOwnershipRequired(bridgeRepo))
+//	{
+//	    bridgeResource.GET("", handler.GetBridge)
+//	    bridgeResource.PUT("", handler.UpdateBridge)
+//	    bridgeResource.DELETE("", handler.DeleteBridge)
+//	}
 func BridgeOwnershipRequired(bridgeRepo repository.BridgeRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取当前用户
@@ -88,11 +89,11 @@ func BridgeOwnershipRequired(bridgeRepo repository.BridgeRepository) gin.Handler
 
 // DroneOwnershipRequired 验证用户是否有权访问无人机资源
 // 功能：
-//   1. 获取当前用户
-//   2. 管理员直接放行（不查数据库）
-//   3. 获取无人机ID并查询无人机
-//   4. 验证所有权
-//   5. 将无人机对象存入上下文（避免Handler重复查询）
+//  1. 获取当前用户
+//  2. 管理员直接放行（不查数据库）
+//  3. 获取无人机ID并查询无人机
+//  4. 验证所有权
+//  5. 将无人机对象存入上下文（避免Handler重复查询）
 //
 // 参数：
 //   - droneRepo: 无人机Repository接口
@@ -101,13 +102,14 @@ func BridgeOwnershipRequired(bridgeRepo repository.BridgeRepository) gin.Handler
 //   - gin.HandlerFunc: Gin中间件函数
 //
 // 使用示例：
-//   droneResource := drones.Group("/:id")
-//   droneResource.Use(middleware.DroneOwnershipRequired(droneRepo))
-//   {
-//       droneResource.GET("", handler.GetDrone)
-//       droneResource.PUT("", handler.UpdateDrone)
-//       droneResource.DELETE("", handler.DeleteDrone)
-//   }
+//
+//	droneResource := drones.Group("/:id")
+//	droneResource.Use(middleware.DroneOwnershipRequired(droneRepo))
+//	{
+//	    droneResource.GET("", handler.GetDrone)
+//	    droneResource.PUT("", handler.UpdateDrone)
+//	    droneResource.DELETE("", handler.DeleteDrone)
+//	}
 func DroneOwnershipRequired(droneRepo repository.DroneRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取当前用户
@@ -162,12 +164,12 @@ func DroneOwnershipRequired(droneRepo repository.DroneRepository) gin.HandlerFun
 
 // DefectOwnershipRequired 验证用户是否有权访问缺陷资源
 // 功能：
-//   1. 获取当前用户
-//   2. 管理员直接放行（不查数据库）
-//   3. 获取缺陷ID并查询缺陷
-//   4. 查询关联的桥梁
-//   5. 验证桥梁所有权
-//   6. 将缺陷对象存入上下文（避免Handler重复查询）
+//  1. 获取当前用户
+//  2. 管理员直接放行（不查数据库）
+//  3. 获取缺陷ID并查询缺陷
+//  4. 查询关联的桥梁
+//  5. 验证桥梁所有权
+//  6. 将缺陷对象存入上下文（避免Handler重复查询）
 //
 // 参数：
 //   - defectService: 缺陷领域服务（用于验证所有权）
@@ -176,12 +178,13 @@ func DroneOwnershipRequired(droneRepo repository.DroneRepository) gin.HandlerFun
 //   - gin.HandlerFunc: Gin中间件函数
 //
 // 使用示例：
-//   defectResource := defects.Group("/:id")
-//   defectResource.Use(middleware.DefectOwnershipRequired(defectService))
-//   {
-//       defectResource.GET("", handler.GetDefect)
-//       defectResource.DELETE("", handler.DeleteDefect)
-//   }
+//
+//	defectResource := defects.Group("/:id")
+//	defectResource.Use(middleware.DefectOwnershipRequired(defectService))
+//	{
+//	    defectResource.GET("", handler.GetDefect)
+//	    defectResource.DELETE("", handler.DeleteDefect)
+//	}
 func DefectOwnershipRequired(defectService *service.DefectService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取当前用户
@@ -229,11 +232,11 @@ func DefectOwnershipRequired(defectService *service.DefectService) gin.HandlerFu
 
 // ReportOwnershipRequired 验证用户是否有权访问报表资源
 // 功能：
-//   1. 获取当前用户
-//   2. 管理员直接放行（不查数据库）
-//   3. 获取报表ID并查询报表
-//   4. 验证所有权
-//   5. 将报表对象存入上下文（避免Handler重复查询）
+//  1. 获取当前用户
+//  2. 管理员直接放行（不查数据库）
+//  3. 获取报表ID并查询报表
+//  4. 验证所有权
+//  5. 将报表对象存入上下文（避免Handler重复查询）
 //
 // 参数：
 //   - reportRepo: 报表Repository接口
@@ -242,13 +245,14 @@ func DefectOwnershipRequired(defectService *service.DefectService) gin.HandlerFu
 //   - gin.HandlerFunc: Gin中间件函数
 //
 // 使用示例：
-//   reportResource := reports.Group("/:id")
-//   reportResource.Use(middleware.ReportOwnershipRequired(reportRepo))
-//   {
-//       reportResource.GET("", handler.GetReport)
-//       reportResource.GET("/download", handler.DownloadReport)
-//       reportResource.DELETE("", handler.DeleteReport)
-//   }
+//
+//	reportResource := reports.Group("/:id")
+//	reportResource.Use(middleware.ReportOwnershipRequired(reportRepo))
+//	{
+//	    reportResource.GET("", handler.GetReport)
+//	    reportResource.GET("/download", handler.DownloadReport)
+//	    reportResource.DELETE("", handler.DeleteReport)
+//	}
 func ReportOwnershipRequired(reportRepo repository.ReportRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取当前用户

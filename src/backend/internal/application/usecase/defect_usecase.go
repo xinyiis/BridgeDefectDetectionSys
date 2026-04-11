@@ -14,14 +14,15 @@ import (
 // DefectUseCase 缺陷用例
 // 处理缺陷查询、详情、删除等业务流程
 type DefectUseCase struct {
-	defectService *service.DefectService  // 缺陷领域服务
-	fileService   service.FileService     // 文件服务
+	defectService *service.DefectService // 缺陷领域服务
+	fileService   service.FileService    // 文件服务
 }
 
 // NewDefectUseCase 创建缺陷用例实例
 // 参数：
 //   - defectService: 缺陷领域服务
 //   - fileService: 文件服务
+//
 // 返回：
 //   - *DefectUseCase: 缺陷用例实例
 func NewDefectUseCase(defectService *service.DefectService, fileService service.FileService) *DefectUseCase {
@@ -35,6 +36,7 @@ func NewDefectUseCase(defectService *service.DefectService, fileService service.
 // 参数：
 //   - req: 列表查询请求
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - *dto.DefectListResponse: 缺陷列表响应
 //   - error: 操作错误
@@ -109,6 +111,7 @@ func (uc *DefectUseCase) ListDefects(req *dto.DefectListRequest, currentUser *mo
 // GetDefect 获取缺陷详情
 // 参数：
 //   - id: 缺陷ID
+//
 // 返回：
 //   - *dto.DefectDetailResponse: 缺陷详情响应
 //   - error: 操作错误
@@ -155,6 +158,7 @@ func (uc *DefectUseCase) GetDefect(id uint) (*dto.DefectDetailResponse, error) {
 // DeleteDefect 删除缺陷
 // 参数：
 //   - id: 缺陷ID
+//
 // 返回：
 //   - error: 操作错误
 func (uc *DefectUseCase) DeleteDefect(id uint) error {
