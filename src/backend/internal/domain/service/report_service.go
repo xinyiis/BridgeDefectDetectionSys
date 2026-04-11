@@ -21,6 +21,7 @@ type ReportService struct {
 // 参数：
 //   - db: GORM数据库连接
 //   - reportRepo: 报表Repository接口
+//
 // 返回：
 //   - *ReportService: 报表服务实例
 func NewReportService(db *gorm.DB, reportRepo repository.ReportRepository) *ReportService {
@@ -33,6 +34,7 @@ func NewReportService(db *gorm.DB, reportRepo repository.ReportRepository) *Repo
 // CreateReport 创建报表记录
 // 参数：
 //   - report: 报表实体
+//
 // 返回：
 //   - error: 操作错误
 func (s *ReportService) CreateReport(report *model.Report) error {
@@ -52,6 +54,7 @@ func (s *ReportService) CreateReport(report *model.Report) error {
 // 参数：
 //   - reportID: 报表ID
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - *model.Report: 报表实体
 //   - error: 操作错误
@@ -76,6 +79,7 @@ func (s *ReportService) GetReport(reportID uint, currentUser *model.User) (*mode
 // UpdateReport 更新报表信息
 // 参数：
 //   - report: 报表实体（包含更新后的数据）
+//
 // 返回：
 //   - error: 操作错误
 func (s *ReportService) UpdateReport(report *model.Report) error {
@@ -90,6 +94,7 @@ func (s *ReportService) UpdateReport(report *model.Report) error {
 // 参数：
 //   - reportID: 报表ID
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - error: 操作错误
 func (s *ReportService) DeleteReport(reportID uint, currentUser *model.User) error {
@@ -118,6 +123,7 @@ func (s *ReportService) DeleteReport(reportID uint, currentUser *model.User) err
 //   - reportType: 报表类型过滤（可选）
 //   - bridgeID: 桥梁ID过滤（可选）
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - []model.Report: 报表列表
 //   - int64: 总数量

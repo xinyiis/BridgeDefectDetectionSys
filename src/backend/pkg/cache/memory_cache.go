@@ -33,6 +33,7 @@ func NewMemoryCache() *MemoryCache {
 // 参数：
 //   - key: 缓存键
 //   - dest: 目标对象指针（用于反序列化）
+//
 // 返回：
 //   - error: 缓存未命中或已过期返回错误
 func (c *MemoryCache) Get(key string, dest interface{}) error {

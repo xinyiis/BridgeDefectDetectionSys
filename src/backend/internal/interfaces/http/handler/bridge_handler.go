@@ -23,6 +23,7 @@ type BridgeHandler struct {
 // 参数：
 //   - bridgeUseCase: 桥梁用例
 //   - fileService: 文件服务
+//
 // 返回：
 //   - *BridgeHandler: 桥梁Handler实例
 func NewBridgeHandler(bridgeUseCase *usecase.BridgeUseCase, fileService service.FileService) *BridgeHandler {

@@ -23,6 +23,7 @@ type LocalFileStorage struct {
 // NewLocalFileStorage 创建本地文件存储实例
 // 参数：
 //   - baseDir: 基础目录路径
+//
 // 返回：
 //   - service.FileService: 文件服务接口
 func NewLocalFileStorage(baseDir string) service.FileService {
@@ -33,6 +34,7 @@ func NewLocalFileStorage(baseDir string) service.FileService {
 // 参数：
 //   - file: 上传的文件
 //   - dir: 保存目录（相对路径）
+//
 // 返回：
 //   - string: 文件相对路径
 //   - error: 错误信息
@@ -76,6 +78,7 @@ func (s *LocalFileStorage) SaveUploadedFile(file *multipart.FileHeader, dir stri
 // 参数：
 //   - file: 上传的图片文件
 //   - dir: 保存目录（相对路径）
+//
 // 返回：
 //   - string: 文件相对路径
 //   - error: 错误信息
@@ -87,6 +90,7 @@ func (s *LocalFileStorage) SaveImage(file *multipart.FileHeader, dir string) (st
 // 参数：
 //   - base64Data: Base64编码的图片数据
 //   - dir: 保存目录（相对路径）
+//
 // 返回：
 //   - string: 文件相对路径
 //   - error: 错误信息
@@ -120,6 +124,7 @@ func (s *LocalFileStorage) SaveResultImage(base64Data string, dir string) (strin
 // DeleteFile 删除文件
 // 参数：
 //   - path: 文件相对路径
+//
 // 返回：
 //   - error: 错误信息
 func (s *LocalFileStorage) DeleteFile(path string) error {
@@ -138,6 +143,7 @@ func (s *LocalFileStorage) DeleteFile(path string) error {
 // 参数：
 //   - file: 上传的文件
 //   - allowedExts: 允许的扩展名列表
+//
 // 返回：
 //   - error: 格式不支持时返回错误
 func (s *LocalFileStorage) ValidateFileFormat(file *multipart.FileHeader, allowedExts []string) error {
@@ -154,6 +160,7 @@ func (s *LocalFileStorage) ValidateFileFormat(file *multipart.FileHeader, allowe
 // 参数：
 //   - file: 上传的文件
 //   - maxSize: 最大文件大小（字节）
+//
 // 返回：
 //   - error: 超过大小限制时返回错误
 func (s *LocalFileStorage) ValidateFileSize(file *multipart.FileHeader, maxSize int64) error {

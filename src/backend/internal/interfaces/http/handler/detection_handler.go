@@ -20,6 +20,7 @@ type DetectionHandler struct {
 // NewDetectionHandler 创建检测Handler实例
 // 参数：
 //   - detectionUseCase: 检测用例
+//
 // 返回：
 //   - *DetectionHandler: 检测Handler实例
 func NewDetectionHandler(detectionUseCase *usecase.DetectionUseCase) *DetectionHandler {

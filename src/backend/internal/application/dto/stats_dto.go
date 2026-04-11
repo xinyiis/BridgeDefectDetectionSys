@@ -33,20 +33,20 @@ type DefectTypeDistributionResponse struct {
 
 // DefectTrend 缺陷趋势
 type DefectTrend struct {
-	Date            string `json:"date"`              // 日期 (YYYY-MM-DD)
-	Count           int    `json:"count"`             // 当天缺陷数
-	CumulativeCount int    `json:"cumulative_count"`  // 累计缺陷数
+	Date            string `json:"date"`             // 日期 (YYYY-MM-DD)
+	Count           int    `json:"count"`            // 当天缺陷数
+	CumulativeCount int    `json:"cumulative_count"` // 累计缺陷数
 }
 
 // DefectTrendResponse 趋势响应
 type DefectTrendResponse struct {
-	Period      string        `json:"period"`       // 统计周期（7days/30days/90days）
-	Granularity string        `json:"granularity"`  // 时间粒度（day/week/month）
-	Trend       []DefectTrend `json:"trend"`        // 趋势数据
-	Total       int           `json:"total"`        // 周期内总缺陷数
-	AvgPerDay   float64       `json:"avg_per_day"`  // 日均缺陷数
-	PeakDate    string        `json:"peak_date"`    // 峰值日期
-	PeakCount   int           `json:"peak_count"`   // 峰值数量
+	Period      string        `json:"period"`      // 统计周期（7days/30days/90days）
+	Granularity string        `json:"granularity"` // 时间粒度（day/week/month）
+	Trend       []DefectTrend `json:"trend"`       // 趋势数据
+	Total       int           `json:"total"`       // 周期内总缺陷数
+	AvgPerDay   float64       `json:"avg_per_day"` // 日均缺陷数
+	PeakDate    string        `json:"peak_date"`   // 峰值日期
+	PeakCount   int           `json:"peak_count"`  // 峰值数量
 }
 
 // BridgeHealthRanking 桥梁健康度排名

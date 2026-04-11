@@ -15,10 +15,10 @@ import (
 // DetectionUseCase 检测用例
 // 处理图片上传检测业务流程
 type DetectionUseCase struct {
-	defectService  *service.DefectService  // 缺陷领域服务
-	bridgeService  *service.BridgeService  // 桥梁领域服务
-	pythonService  service.PythonService   // Python检测服务
-	fileService    service.FileService     // 文件服务
+	defectService *service.DefectService // 缺陷领域服务
+	bridgeService *service.BridgeService // 桥梁领域服务
+	pythonService service.PythonService  // Python检测服务
+	fileService   service.FileService    // 文件服务
 }
 
 // NewDetectionUseCase 创建检测用例实例
@@ -27,6 +27,7 @@ type DetectionUseCase struct {
 //   - bridgeService: 桥梁领域服务
 //   - pythonService: Python检测服务
 //   - fileService: 文件服务
+//
 // 返回：
 //   - *DetectionUseCase: 检测用例实例
 func NewDetectionUseCase(
@@ -36,10 +37,10 @@ func NewDetectionUseCase(
 	fileService service.FileService,
 ) *DetectionUseCase {
 	return &DetectionUseCase{
-		defectService:  defectService,
-		bridgeService:  bridgeService,
-		pythonService:  pythonService,
-		fileService:    fileService,
+		defectService: defectService,
+		bridgeService: bridgeService,
+		pythonService: pythonService,
+		fileService:   fileService,
 	}
 }
 
@@ -47,6 +48,7 @@ func NewDetectionUseCase(
 // 参数：
 //   - req: 检测上传请求
 //   - currentUser: 当前用户
+//
 // 返回：
 //   - *dto.DetectionResponse: 检测结果响应（包含多个缺陷）
 //   - error: 操作错误
@@ -99,8 +101,8 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 		defect := &model.Defect{
 			BridgeID:   req.BridgeID,
 			DefectType: detectedDefect.DefectType,
-			ImagePath:  imagePath,      // 共享同一张原图
-			ResultPath: resultPath,     // 共享同一张结果图
+			ImagePath:  imagePath,  // 共享同一张原图
+			ResultPath: resultPath, // 共享同一张结果图
 			BBox:       detectedDefect.BBoxJSON(),
 			Length:     detectedDefect.Length,
 			Width:      detectedDefect.Width,
