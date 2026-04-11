@@ -15,6 +15,7 @@ import (
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/handler"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/interfaces/http/middleware"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/config"
+	videopkg "github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/video"
 	"gorm.io/gorm"
 )
 
@@ -68,11 +69,11 @@ func setupGlobalMiddleware(r *gin.Engine, cfg *config.Config) {
 	// Session 中间件
 	store := cookie.NewStore([]byte(cfg.Session.Secret))
 	store.Options(sessions.Options{
-		MaxAge:   cfg.Session.MaxAge,    // Session 有效期（秒）
-		Path:     "/",                    // Cookie 路径
-		HttpOnly: true,                   // 防止 XSS 攻击
-		Secure:   false,                  // 开发环境使用 HTTP，生产环境应改为 true（HTTPS）
-		SameSite: 2,                      // Lax 模式，允许部分跨站请求
+		MaxAge:   cfg.Session.MaxAge, // Session 有效期（秒）
+		Path:     "/",                // Cookie 路径
+		HttpOnly: true,               // 防止 XSS 攻击
+		Secure:   false,              // 开发环境使用 HTTP，生产环境应改为 true（HTTPS）
+		SameSite: 2,                  // Lax 模式，允许部分跨站请求
 	})
 	r.Use(sessions.Sessions(cfg.Session.CookieName, store))
 }
@@ -93,6 +94,8 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	bridgeRepo := persistence.NewBridgeRepository(db)
 	droneRepo := persistence.NewDroneRepository(db)
 	defectRepo := persistence.NewDefectRepository(db)
+	videoTaskRepo := persistence.NewVideoTaskRepository(db)
+	observationRepo := persistence.NewDefectObservationRepository(db)
 
 	// 2. Service 层
 	userService := service.NewUserService(userRepo)
@@ -118,6 +121,15 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	bridgeUseCase := usecase.NewBridgeUseCase(bridgeService)
 	droneUseCase := usecase.NewDroneUseCase(droneService)
 	detectionUseCase := usecase.NewDetectionUseCase(defectService, bridgeService, pythonService, fileService)
+	videoDetectionUseCase := usecase.NewVideoDetectionUseCase(
+		defectService,
+		bridgeService,
+		pythonService,
+		fileService,
+		videopkg.NewFrameExtractor("ffmpeg"),
+		videoTaskRepo,
+		observationRepo,
+	)
 	defectUseCase := usecase.NewDefectUseCase(defectService, fileService)
 	statsUseCase := usecase.NewStatsUseCase(statsService)
 
@@ -131,6 +143,8 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	bridgeHandler := handler.NewBridgeHandler(bridgeUseCase, fileService)
 	droneHandler := handler.NewDroneHandler(droneUseCase)
 	detectionHandler := handler.NewDetectionHandler(detectionUseCase)
+	videoDetectionHandler := handler.NewVideoDetectionHandler(videoDetectionUseCase)
+	videoStreamHandler := handler.NewVideoStreamHandler(videoDetectionUseCase)
 	defectHandler := handler.NewDefectHandler(defectUseCase)
 	statsHandler := handler.NewStatsHandler(statsUseCase)
 	reportHandler := handler.NewReportHandler(reportUseCase)
@@ -145,7 +159,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
-	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, defectHandler, statsHandler, reportHandler, bridgeRepo, droneRepo, reportRepo, defectService, cfg)
+	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, videoDetectionHandler, videoStreamHandler, defectHandler, statsHandler, reportHandler, bridgeRepo, droneRepo, reportRepo, defectService, cfg)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -176,7 +190,7 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 
 // registerAuthRoutes 注册认证路由
 // 这些接口需要用户登录后才能访问
-func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, defectHandler *handler.DefectHandler, statsHandler *handler.StatsHandler, reportHandler *handler.ReportHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, reportRepo repository.ReportRepository, defectService *service.DefectService, cfg *config.Config) {
+func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, droneHandler *handler.DroneHandler, detectionHandler *handler.DetectionHandler, videoDetectionHandler *handler.VideoDetectionHandler, videoStreamHandler *handler.VideoStreamHandler, defectHandler *handler.DefectHandler, statsHandler *handler.StatsHandler, reportHandler *handler.ReportHandler, bridgeRepo repository.BridgeRepository, droneRepo repository.DroneRepository, reportRepo repository.ReportRepository, defectService *service.DefectService, cfg *config.Config) {
 	// ========== 用户认证相关 ==========
 	auth := r.Group("/auth")
 	{
@@ -186,16 +200,16 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 	// ========== 用户个人信息 ==========
 	user := r.Group("/user")
 	{
-		user.GET("/profile", userHandler.GetUserInfo)     // GET /api/v1/user/profile
-		user.PUT("/profile", userHandler.UpdateUserInfo)  // PUT /api/v1/user/profile
+		user.GET("/profile", userHandler.GetUserInfo)    // GET /api/v1/user/profile
+		user.PUT("/profile", userHandler.UpdateUserInfo) // PUT /api/v1/user/profile
 	}
 
 	// ========== 桥梁管理 ==========
 	bridges := r.Group("/bridges")
 	{
 		// 列表和创建不需要所有权验证
-		bridges.GET("", bridgeHandler.ListBridges)    // 获取桥梁列表
-		bridges.POST("", bridgeHandler.CreateBridge)  // 创建桥梁
+		bridges.GET("", bridgeHandler.ListBridges)   // 获取桥梁列表
+		bridges.POST("", bridgeHandler.CreateBridge) // 创建桥梁
 
 		// 单个资源操作需要所有权验证
 		bridgeResource := bridges.Group("/:id")
@@ -211,8 +225,8 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 	drones := r.Group("/drones")
 	{
 		// 列表和创建不需要所有权验证
-		drones.GET("", droneHandler.ListDrones)    // GET /api/v1/drones
-		drones.POST("", droneHandler.CreateDrone)  // POST /api/v1/drones
+		drones.GET("", droneHandler.ListDrones)   // GET /api/v1/drones
+		drones.POST("", droneHandler.CreateDrone) // POST /api/v1/drones
 
 		// 单个资源操作需要所有权验证
 		droneResource := drones.Group("/:id")
@@ -228,6 +242,11 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 	detection := r.Group("/detection")
 	{
 		detection.POST("/upload", detectionHandler.UploadAndDetect) // POST /api/v1/detection/upload
+		detection.POST("/video/upload", videoDetectionHandler.UploadVideo)
+		detection.POST("/video/:task_id/start", videoDetectionHandler.StartTask)
+		detection.GET("/video/:task_id", videoDetectionHandler.GetTask)
+		detection.POST("/video/:task_id/cancel", videoDetectionHandler.CancelTask)
+		detection.GET("/video/ws", videoStreamHandler.Stream)
 	}
 
 	// ========== 缺陷管理 ==========
@@ -246,20 +265,20 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 	// ========== 统计分析 ==========
 	stats := r.Group("/stats")
 	{
-		stats.GET("/overview", statsHandler.GetOverview)                        // GET /api/v1/stats/overview
-		stats.GET("/defect-types", statsHandler.GetDefectTypeDistribution)      // GET /api/v1/stats/defect-types
-		stats.GET("/defect-trend", statsHandler.GetDefectTrend)                 // GET /api/v1/stats/defect-trend
-		stats.GET("/bridge-ranking", statsHandler.GetBridgeRanking)             // GET /api/v1/stats/bridge-ranking
-		stats.GET("/recent-detections", statsHandler.GetRecentDetections)       // GET /api/v1/stats/recent-detections
-		stats.GET("/high-risk-alerts", statsHandler.GetHighRiskAlerts)          // GET /api/v1/stats/high-risk-alerts
+		stats.GET("/overview", statsHandler.GetOverview)                   // GET /api/v1/stats/overview
+		stats.GET("/defect-types", statsHandler.GetDefectTypeDistribution) // GET /api/v1/stats/defect-types
+		stats.GET("/defect-trend", statsHandler.GetDefectTrend)            // GET /api/v1/stats/defect-trend
+		stats.GET("/bridge-ranking", statsHandler.GetBridgeRanking)        // GET /api/v1/stats/bridge-ranking
+		stats.GET("/recent-detections", statsHandler.GetRecentDetections)  // GET /api/v1/stats/recent-detections
+		stats.GET("/high-risk-alerts", statsHandler.GetHighRiskAlerts)     // GET /api/v1/stats/high-risk-alerts
 	}
 
 	// ========== 报表生成 ==========
 	reports := r.Group("/reports")
 	{
 		// 列表和创建不需要所有权验证
-		reports.GET("", reportHandler.ListReports)    // GET /api/v1/reports
-		reports.POST("", reportHandler.CreateReport)  // POST /api/v1/reports
+		reports.GET("", reportHandler.ListReports)   // GET /api/v1/reports
+		reports.POST("", reportHandler.CreateReport) // POST /api/v1/reports
 
 		// 单个资源操作需要所有权验证
 		reportResource := reports.Group("/:id")
@@ -276,9 +295,9 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 // 这些接口需要管理员权限才能访问
 func registerAdminRoutes(r *gin.RouterGroup, userHandler *handler.UserHandler) {
 	// ========== 用户管理 ==========
-	r.GET("/users", userHandler.ListUsers)              // 获取所有用户（分页）
-	r.GET("/users/:id", userHandler.GetUserByID)        // 获取用户详情
-	r.DELETE("/users/:id", userHandler.DeleteUser)      // 删除用户
+	r.GET("/users", userHandler.ListUsers)               // 获取所有用户（分页）
+	r.GET("/users/:id", userHandler.GetUserByID)         // 获取用户详情
+	r.DELETE("/users/:id", userHandler.DeleteUser)       // 删除用户
 	r.POST("/users/promote", userHandler.PromoteToAdmin) // 提升用户为管理员
 
 	// ========== 全局统计（待实现）==========

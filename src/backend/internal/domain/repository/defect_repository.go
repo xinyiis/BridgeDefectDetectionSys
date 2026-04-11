@@ -51,15 +51,18 @@ type DefectRepository interface {
 	//   - int64: 总数量
 	//   - error: 操作错误
 	ListByBridgeID(bridgeID uint, page, pageSize int) ([]model.Defect, int64, error)
+
+	// Update 更新缺陷记录。
+	Update(defect *model.Defect) error
 }
 
 // DefectListFilters 缺陷列表过滤条件
 type DefectListFilters struct {
-	Page        int          // 页码（从1开始）
-	PageSize    int          // 每页数量
-	BridgeID    *uint        // 按桥梁ID过滤（可选）
-	DefectType  string       // 按缺陷类型过滤（可选）
-	StartTime   *time.Time   // 检测开始时间（可选）
-	EndTime     *time.Time   // 检测结束时间（可选）
-	CurrentUser *model.User  // 当前用户（用于权限过滤）
+	Page        int         // 页码（从1开始）
+	PageSize    int         // 每页数量
+	BridgeID    *uint       // 按桥梁ID过滤（可选）
+	DefectType  string      // 按缺陷类型过滤（可选）
+	StartTime   *time.Time  // 检测开始时间（可选）
+	EndTime     *time.Time  // 检测结束时间（可选）
+	CurrentUser *model.User // 当前用户（用于权限过滤）
 }
