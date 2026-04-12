@@ -16,6 +16,7 @@ type Config struct {
 	Server        ServerConfig        `yaml:"server"`         // 服务器配置
 	Database      DatabaseConfig      `yaml:"database"`       // 数据库配置
 	PythonService PythonServiceConfig `yaml:"python_service"` // Python 算法服务配置
+	Detection     DetectionConfig     `yaml:"detection"`      // 检测流程配置
 	Upload        UploadConfig        `yaml:"upload"`         // 文件上传配置
 	Session       SessionConfig       `yaml:"session"`        // Session 配置
 	CORS          CORSConfig          `yaml:"cors"`           // CORS 跨域配置
@@ -40,6 +41,11 @@ type PythonServiceConfig struct {
 	Enabled bool   `yaml:"enabled"` // 是否启用真实Python服务（false=Mock，true=HTTP）
 	URL     string `yaml:"url"`     // Python 服务地址
 	Timeout int    `yaml:"timeout"` // 请求超时时间（秒）
+}
+
+// DetectionConfig 检测流程配置
+type DetectionConfig struct {
+	PersistenceWorkers int `yaml:"persistence_workers"` // 检测持久化后台 worker 数量
 }
 
 // UploadConfig 文件上传配置
@@ -93,6 +99,7 @@ func LoadConfig() *Config {
 	}
 
 	// 3. 验证必要配置项
+	applyEnvOverrides(&cfg)
 	if err := validateConfig(&cfg); err != nil {
 		log.Fatalf("配置验证失败: %v", err)
 	}
@@ -103,6 +110,16 @@ func LoadConfig() *Config {
 	globalConfig = &cfg
 	log.Println("✓ 配置加载成功")
 	return globalConfig
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	if pythonServiceURL := os.Getenv("PYTHON_SERVICE_URL"); pythonServiceURL != "" {
+		cfg.PythonService.URL = pythonServiceURL
+	}
 }
 
 // GetConfig 获取全局配置实例
@@ -137,6 +154,10 @@ func validateConfig(cfg *Config) error {
 	// 生产环境警告
 	if cfg.Server.Mode == "release" && cfg.Session.Secret == "bridge-detection-secret-key-change-in-production" {
 		log.Println("⚠️  警告: 生产环境请修改 Session 密钥（session.secret）")
+	}
+
+	if cfg.Detection.PersistenceWorkers <= 0 {
+		cfg.Detection.PersistenceWorkers = 2
 	}
 
 	return nil

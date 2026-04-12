@@ -5,12 +5,13 @@
 ## 📋 目录
 
 1. [基础工具配置](#基础工具配置) - Linux虚拟机必备工具
-2. [后端环境配置](#后端环境配置) - Go + MySQL环境
+2. [后端环境配置](#后端环境配置) - Go + MySQL + 本地FFmpeg环境
 
 ## 📁 目录结构
 
 ```text
 environment-setup/
+├── install_ffmpeg_local.sh     # 本地 FFmpeg / FFprobe 安装脚本
 ├── setup_basic_tools.sh       # 基础工具安装脚本
 ├── backend-env/               # 后端环境相关
 │   ├── setup_backend_env.sh   # 后端环境安装脚本
@@ -61,7 +62,7 @@ sudo ./setup_basic_tools.sh
 
 ## 🚀 后端环境配置
 
-**适用场景：** 安装项目后端所需的Go语言和MySQL数据库。
+**适用场景：** 安装项目后端所需的 Go 语言、MySQL 数据库以及视频提帧依赖。
 
 ### 快速开始（2步）
 
@@ -85,6 +86,7 @@ source ~/.bashrc
 
 - **Go 1.25.0** - Go编程语言
 - **MySQL 8.0** - 数据库（用户名：root，密码：123456）
+- **本地 FFmpeg / FFprobe** - 安装到仓库根目录 `.local-tools/ffmpeg/bin/`
 - **Go依赖包** - Gin、GORM等7个包
 
 **注意：** 脚本只安装MySQL，不会创建具体的数据库。
@@ -122,6 +124,31 @@ go version
 
 # 检查MySQL
 mysql -uroot -p123456
+
+# 检查本地 FFmpeg / FFprobe
+../.local-tools/ffmpeg/bin/ffmpeg -version
+../.local-tools/ffmpeg/bin/ffprobe -version
+```
+
+### 单独安装或重装 FFmpeg
+
+如果你只想同步视频工具，不想重复安装 Go / MySQL，可以单独运行：
+
+```bash
+./install_ffmpeg_local.sh
+```
+
+脚本会使用以下下载命令拉取静态版 FFmpeg：
+
+```bash
+curl -L --fail --output "/tmp/ffmpeg-release-amd64-static.tar.xz" \
+  "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+```
+
+安装目标路径固定为：
+
+```bash
+../.local-tools/ffmpeg/bin/
 ```
 
 ### 2. 导入数据库

@@ -25,6 +25,31 @@ type FileService interface {
 	//   - error: 错误信息
 	SaveImage(file *multipart.FileHeader, dir string) (string, error)
 
+	// SaveTempImage 保存临时图片文件（供同步检测阶段使用）
+	// 返回临时相对路径，例如 "tmp/images/uuid.jpg"
+	SaveTempImage(file *multipart.FileHeader) (string, error)
+
+	// AllocateImagePath 预分配最终文件路径，但不立即写入文件
+	// 参数：
+	//   - dir: 目标目录（相对路径，如 "images"）
+	//   - ext: 文件扩展名（如 ".jpg"）
+	// 返回：
+	//   - string: 文件相对路径
+	//   - error: 错误信息
+	AllocateImagePath(dir, ext string) (string, error)
+
+	// PersistTempFile 将临时文件持久化到最终路径
+	// 参数：
+	//   - tempPath: 临时文件相对路径
+	//   - finalPath: 最终文件相对路径
+	PersistTempFile(tempPath, finalPath string) error
+
+	// PersistResultImage 将结果图Base64数据写入指定最终路径
+	// 参数：
+	//   - base64Data: Base64编码图片
+	//   - finalPath: 最终文件相对路径
+	PersistResultImage(base64Data, finalPath string) error
+
 	// SaveResultImage 保存结果图（从Base64）
 	// 参数：
 	//   - base64Data: Base64编码的图片数据
@@ -40,6 +65,13 @@ type FileService interface {
 	// 返回：
 	//   - error: 错误信息
 	DeleteFile(path string) error
+
+	// ResolvePath 将存储相对路径解析为本地物理路径
+	// 参数：
+	//   - path: 文件相对路径或绝对路径
+	// 返回：
+	//   - string: 可供本地读取的物理路径
+	ResolvePath(path string) string
 
 	// ValidateFileFormat 验证文件格式
 	// 参数：

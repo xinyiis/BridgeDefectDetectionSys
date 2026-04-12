@@ -94,3 +94,34 @@ func (h *DetectionHandler) UploadAndDetect(c *gin.Context) {
 	// 5. 返回检测结果
 	response.Success(c, result)
 }
+
+// GetPersistenceStatus 查询检测持久化状态。
+func (h *DetectionHandler) GetPersistenceStatus(c *gin.Context) {
+	currentUser, exists := c.Get("current_user")
+	if !exists {
+		response.Unauthorized(c)
+		return
+	}
+	user := currentUser.(*model.User)
+
+	taskID := strings.TrimSpace(c.Param("task_id"))
+	if taskID == "" {
+		response.BadRequest(c, "task_id 不能为空")
+		return
+	}
+
+	result, err := h.detectionUseCase.GetPersistenceTaskStatus(taskID, user)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "不存在") {
+			response.NotFound(c, errMsg)
+		} else if strings.Contains(errMsg, "无权访问") {
+			response.Forbidden(c)
+		} else {
+			response.InternalErrorWithDetail(c, errMsg)
+		}
+		return
+	}
+
+	response.Success(c, result)
+}

@@ -82,6 +82,34 @@ func (s *DefectService) CreateDefect(defect *model.Defect) error {
 	return s.defectRepo.Create(defect)
 }
 
+// CreateDefectsBatch 批量创建缺陷记录。
+// 调用方应已完成桥梁存在性校验，避免逐条重复查询桥梁。
+func (s *DefectService) CreateDefectsBatch(defects []*model.Defect) error {
+	if len(defects) == 0 {
+		return nil
+	}
+
+	for _, defect := range defects {
+		if defect == nil {
+			continue
+		}
+		if defect.SourceType == "" {
+			defect.SourceType = "image"
+		}
+		if defect.MeasurementSource == "" {
+			defect.MeasurementSource = "unknown"
+		}
+		if defect.MeasurementStatus == "" {
+			defect.MeasurementStatus = "pending"
+		}
+		if defect.ObservationCount == 0 {
+			defect.ObservationCount = 1
+		}
+	}
+
+	return s.defectRepo.CreateBatch(defects)
+}
+
 // GetDefect 根据ID获取缺陷
 // 参数：
 //   - id: 缺陷ID

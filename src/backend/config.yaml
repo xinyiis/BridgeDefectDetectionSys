@@ -15,9 +15,13 @@ database:
 
 # Python 算法服务配置
 python_service:
-  enabled: false                   # 是否启用真实Python服务（false=Mock，true=HTTP）
-  url: "http://localhost:8000"     # Python 服务地址
+  enabled: true                    # 是否启用真实Python服务（false=Mock，true=HTTP）
+  url: "http://localhost:18080"    # Python 服务地址（通过 SSH 隧道映射）
   timeout: 30                      # 请求超时时间（秒）
+
+# 检测流程配置
+detection:
+  persistence_workers: 2           # 检测持久化后台 worker 数量
 
 # 文件上传配置
 upload:

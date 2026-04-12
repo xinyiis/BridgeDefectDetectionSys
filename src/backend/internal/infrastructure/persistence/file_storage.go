@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
@@ -86,6 +87,74 @@ func (s *LocalFileStorage) SaveImage(file *multipart.FileHeader, dir string) (st
 	return s.SaveUploadedFile(file, dir)
 }
 
+// SaveTempImage 保存临时图片文件。
+func (s *LocalFileStorage) SaveTempImage(file *multipart.FileHeader) (string, error) {
+	return s.SaveUploadedFile(file, filepath.Join("tmp", "images"))
+}
+
+// AllocateImagePath 预分配文件相对路径，但不立即写入文件。
+func (s *LocalFileStorage) AllocateImagePath(dir, ext string) (string, error) {
+	if strings.TrimSpace(dir) == "" {
+		return "", fmt.Errorf("目录不能为空")
+	}
+	if ext == "" {
+		ext = ".jpg"
+	}
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+
+	filename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+	return filepath.Join(dir, filename), nil
+}
+
+// PersistTempFile 将临时文件复制到最终路径。
+func (s *LocalFileStorage) PersistTempFile(tempPath, finalPath string) error {
+	srcPath := s.ResolvePath(tempPath)
+	dstPath := s.ResolvePath(finalPath)
+
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("打开临时文件失败: %w", err)
+	}
+	defer src.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("创建文件失败: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("复制临时文件失败: %w", err)
+	}
+
+	return nil
+}
+
+// PersistResultImage 将结果图写入指定最终路径。
+func (s *LocalFileStorage) PersistResultImage(base64Data, finalPath string) error {
+	imageData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return fmt.Errorf("Base64解码失败: %w", err)
+	}
+
+	fullPath := s.ResolvePath(finalPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	if err := os.WriteFile(fullPath, imageData, 0644); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	return nil
+}
+
 // SaveResultImage 保存结果图（从Base64）
 // 参数：
 //   - base64Data: Base64编码的图片数据
@@ -95,30 +164,14 @@ func (s *LocalFileStorage) SaveImage(file *multipart.FileHeader, dir string) (st
 //   - string: 文件相对路径
 //   - error: 错误信息
 func (s *LocalFileStorage) SaveResultImage(base64Data string, dir string) (string, error) {
-	// 1. 解码Base64数据
-	imageData, err := base64.StdEncoding.DecodeString(base64Data)
+	finalPath, err := s.AllocateImagePath(dir, ".jpg")
 	if err != nil {
-		return "", fmt.Errorf("Base64解码失败: %w", err)
+		return "", err
 	}
-
-	// 2. 生成唯一文件名（默认.jpg扩展名）
-	filename := fmt.Sprintf("%s.jpg", uuid.New().String())
-
-	// 3. 构建完整路径
-	fullPath := filepath.Join(s.baseDir, dir, filename)
-
-	// 4. 确保目录存在
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		return "", fmt.Errorf("创建目录失败: %w", err)
+	if err := s.PersistResultImage(base64Data, finalPath); err != nil {
+		return "", err
 	}
-
-	// 5. 写入文件
-	if err := os.WriteFile(fullPath, imageData, 0644); err != nil {
-		return "", fmt.Errorf("写入文件失败: %w", err)
-	}
-
-	// 6. 返回相对路径
-	return filepath.Join(dir, filename), nil
+	return finalPath, nil
 }
 
 // DeleteFile 删除文件
@@ -128,7 +181,7 @@ func (s *LocalFileStorage) SaveResultImage(base64Data string, dir string) (strin
 // 返回：
 //   - error: 错误信息
 func (s *LocalFileStorage) DeleteFile(path string) error {
-	fullPath := filepath.Join(s.baseDir, path)
+	fullPath := s.ResolvePath(path)
 	if err := os.Remove(fullPath); err != nil {
 		// 文件不存在不算错误
 		if os.IsNotExist(err) {
@@ -137,6 +190,14 @@ func (s *LocalFileStorage) DeleteFile(path string) error {
 		return fmt.Errorf("删除文件失败: %w", err)
 	}
 	return nil
+}
+
+// ResolvePath 将存储相对路径解析为本地物理路径。
+func (s *LocalFileStorage) ResolvePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(s.baseDir, path)
 }
 
 // ValidateFileFormat 验证文件格式

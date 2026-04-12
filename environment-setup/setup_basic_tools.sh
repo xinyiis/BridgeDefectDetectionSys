@@ -8,6 +8,9 @@
 
 set -e  # 遇到错误立即退出
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FFMPEG_INSTALL_SCRIPT="${SCRIPT_DIR}/install_ffmpeg_local.sh"
+
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -66,6 +69,9 @@ show_help() {
     echo "  - tmux         终端复用器"
     echo "  - zip/unzip    压缩解压工具"
     echo "  - jq           JSON处理工具"
+    echo ""
+    echo "🎬 多媒体工具:"
+    echo "  - ffmpeg/ffprobe  本地静态版视频处理工具（安装到仓库内）"
     echo ""
     echo "适用系统:"
     echo "  - Ubuntu 22.04/24.04"
@@ -176,6 +182,16 @@ check_all_tools() {
             echo -e "  ${RED}✗${NC} $tool"
         fi
     done
+    echo ""
+
+    echo "🎬 多媒体工具:"
+    total=$((total + 1))
+    if [ -x "${SCRIPT_DIR}/../.local-tools/ffmpeg/bin/ffmpeg" ] && [ -x "${SCRIPT_DIR}/../.local-tools/ffmpeg/bin/ffprobe" ]; then
+        echo -e "  ${GREEN}✓${NC} ffmpeg (local)"
+        installed=$((installed + 1))
+    else
+        echo -e "  ${RED}✗${NC} ffmpeg (local)"
+    fi
     echo ""
 
     echo "=========================================="
@@ -315,6 +331,18 @@ install_system_tools() {
     fi
 }
 
+install_media_tools() {
+    print_info "安装多媒体工具..."
+
+    if [ ! -x "${FFMPEG_INSTALL_SCRIPT}" ]; then
+        print_error "未找到 FFmpeg 安装脚本: ${FFMPEG_INSTALL_SCRIPT}"
+        exit 1
+    fi
+
+    bash "${FFMPEG_INSTALL_SCRIPT}"
+    print_success "多媒体工具安装完成"
+}
+
 # 配置Git（可选）
 configure_git() {
     if check_tool git; then
@@ -376,6 +404,10 @@ show_versions() {
         echo "tmux: $(tmux -V | awk '{print $2}')"
     fi
 
+    if [ -x "${SCRIPT_DIR}/../.local-tools/ffmpeg/bin/ffmpeg" ]; then
+        echo "ffmpeg: $("${SCRIPT_DIR}/../.local-tools/ffmpeg/bin/ffmpeg" -version | head -n1 | awk '{print $3}')"
+    fi
+
     echo ""
 }
 
@@ -404,6 +436,10 @@ show_tips() {
     echo "  htop                查看进程"
     echo "  tree                显示目录树"
     echo "  tmux                启动终端复用器"
+    echo ""
+    echo "🎬 多媒体工具:"
+    echo "  ./.local-tools/ffmpeg/bin/ffmpeg -version"
+    echo "  ./.local-tools/ffmpeg/bin/ffprobe -version"
     echo ""
     echo "=========================================="
 }
@@ -474,6 +510,7 @@ main() {
     install_dev_tools
     install_network_tools
     install_system_tools
+    install_media_tools
 
     # 配置Git
     configure_git

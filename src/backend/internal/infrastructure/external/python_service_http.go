@@ -36,44 +36,67 @@ func NewHTTPPythonService(baseURL string) *HTTPPythonService {
 
 // DetectDefect 调用Python服务进行缺陷检测
 func (s *HTTPPythonService) DetectDefect(imagePath, modelName string, pixelRatio float64) (*service.PythonDetectionResult, error) {
-	// 1. 构建请求体
-	requestBody := map[string]interface{}{
-		"image_path":  imagePath,
-		"model_name":  modelName,
-		"pixel_ratio": pixelRatio,
-	}
+	_ = pixelRatio
 
-	jsonData, err := json.Marshal(requestBody)
+	detectResult, err := s.Detect(imagePath, &service.DetectRequest{
+		ModelName: modelName,
+		Conf:      0.25,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("构建请求失败: %w", err)
+		return nil, err
+	}
+	if detectResult == nil {
+		return nil, fmt.Errorf("检测接口返回空响应")
+	}
+	if detectResult.Status != "success" {
+		return nil, fmt.Errorf("检测接口业务失败: %s", detectResult.Status)
 	}
 
-	// 2. 发送HTTP POST请求
-	url := fmt.Sprintf("%s/api/detect", s.baseURL)
-	resp, err := s.client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	defects := make([]service.DefectDetection, 0, len(detectResult.YOLOBBoxes))
+	for _, item := range detectResult.YOLOBBoxes {
+		defects = append(defects, service.DefectDetection{
+			DefectType: item.ClassName,
+			BBox: service.BBoxData{
+				YOLOCoords: item.YOLOCoords,
+			},
+			Confidence: item.Confidence,
+		})
+	}
+
+	if len(defects) == 0 {
+		return &service.PythonDetectionResult{
+			Success:      true,
+			TotalDefects: 0,
+			Defects:      defects,
+			ResultImage:  detectResult.ImageResult,
+		}, nil
+	}
+
+	bboxesJSON, err := json.Marshal(detectResult.YOLOBBoxes)
 	if err != nil {
-		return nil, fmt.Errorf("调用Python服务失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 3. 检查HTTP状态码
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Python服务返回错误: %d, 响应: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("序列化检测框失败: %w", err)
 	}
 
-	// 4. 解析响应
-	var result service.PythonDetectionResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("解析Python响应失败: %w", err)
+	segmentResult, err := s.Segment(imagePath, &service.SegmentRequest{
+		BBoxesJSON: string(bboxesJSON),
+		Alpha:      0.5,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if segmentResult == nil {
+		return nil, fmt.Errorf("分割接口返回空响应")
+	}
+	if segmentResult.Status != "success" {
+		return nil, fmt.Errorf("分割接口业务失败: %s", segmentResult.Status)
 	}
 
-	// 5. 检查业务成功标志
-	if !result.Success {
-		return nil, fmt.Errorf("Python检测失败: %s", result.ErrorMessage)
-	}
-
-	return &result, nil
+	return &service.PythonDetectionResult{
+		Success:      true,
+		TotalDefects: len(defects),
+		Defects:      defects,
+		ResultImage:  segmentResult.FusionImage,
+	}, nil
 }
 
 // Detect 调用 Python YOLO 检测接口。
@@ -167,7 +190,7 @@ func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentReques
 			return nil
 		}
 		if req.BBoxesJSON != "" {
-			if err := writer.WriteField("yolo_bboxes", req.BBoxesJSON); err != nil {
+			if err := writer.WriteField("bboxes_json", req.BBoxesJSON); err != nil {
 				return err
 			}
 		}

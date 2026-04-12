@@ -24,14 +24,94 @@ type ffmpegFrameExtractor struct {
 
 // NewFrameExtractor 创建 FFmpeg 帧提取器。
 func NewFrameExtractor(ffmpegPath string) FrameExtractor {
-	if ffmpegPath == "" {
-		ffmpegPath = "ffmpeg"
-	}
+	resolvedFFmpegPath, resolvedFFprobePath := resolveFFmpegPaths(ffmpegPath)
 
 	return &ffmpegFrameExtractor{
-		ffmpegPath:  ffmpegPath,
-		ffprobePath: "ffprobe",
+		ffmpegPath:  resolvedFFmpegPath,
+		ffprobePath: resolvedFFprobePath,
 	}
+}
+
+func resolveFFmpegPaths(ffmpegPath string) (string, string) {
+	requestedPath := strings.TrimSpace(ffmpegPath)
+	if requestedPath != "" && requestedPath != "ffmpeg" {
+		return requestedPath, resolveFFprobePath(filepath.Dir(requestedPath))
+	}
+
+	if envFFmpegPath := strings.TrimSpace(os.Getenv("FFMPEG_PATH")); envFFmpegPath != "" {
+		return envFFmpegPath, resolveFFprobePath(filepath.Dir(envFFmpegPath))
+	}
+
+	if localFFmpegPath, localFFprobePath, ok := findLocalFFmpegBinaries(); ok {
+		return localFFmpegPath, localFFprobePath
+	}
+
+	return resolveBinaryPath("ffmpeg"), resolveBinaryPath(resolveEnvOrDefault("FFPROBE_PATH", "ffprobe"))
+}
+
+func resolveFFprobePath(ffmpegDir string) string {
+	if envFFprobePath := strings.TrimSpace(os.Getenv("FFPROBE_PATH")); envFFprobePath != "" {
+		return envFFprobePath
+	}
+
+	if ffmpegDir != "" {
+		ffprobePath := filepath.Join(ffmpegDir, "ffprobe")
+		if isUsableBinary(ffprobePath) {
+			return ffprobePath
+		}
+	}
+
+	return resolveBinaryPath("ffprobe")
+}
+
+func findLocalFFmpegBinaries() (string, string, bool) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return "", "", false
+	}
+
+	currentDir := workingDir
+	for {
+		ffmpegPath := filepath.Join(currentDir, ".local-tools", "ffmpeg", "bin", "ffmpeg")
+		ffprobePath := filepath.Join(currentDir, ".local-tools", "ffmpeg", "bin", "ffprobe")
+		if isUsableBinary(ffmpegPath) && isUsableBinary(ffprobePath) {
+			return ffmpegPath, ffprobePath, true
+		}
+
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			break
+		}
+
+		currentDir = parentDir
+	}
+
+	return "", "", false
+}
+
+func resolveEnvOrDefault(envName, defaultValue string) string {
+	if envValue := strings.TrimSpace(os.Getenv(envName)); envValue != "" {
+		return envValue
+	}
+
+	return defaultValue
+}
+
+func resolveBinaryPath(binary string) string {
+	if absolutePath, err := exec.LookPath(binary); err == nil {
+		return absolutePath
+	}
+
+	return binary
+}
+
+func isUsableBinary(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil || fileInfo.IsDir() {
+		return false
+	}
+
+	return fileInfo.Mode().Perm()&0111 != 0
 }
 
 func (e *ffmpegFrameExtractor) CountFrames(videoPath string, fps float64) (int, error) {

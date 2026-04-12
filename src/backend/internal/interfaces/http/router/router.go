@@ -120,13 +120,19 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	userUseCase := usecase.NewUserUseCase(userService)
 	bridgeUseCase := usecase.NewBridgeUseCase(bridgeService)
 	droneUseCase := usecase.NewDroneUseCase(droneService)
-	detectionUseCase := usecase.NewDetectionUseCase(defectService, bridgeService, pythonService, fileService)
+	detectionUseCase := usecase.NewDetectionUseCaseWithPersistenceWorkers(
+		defectService,
+		bridgeService,
+		pythonService,
+		fileService,
+		cfg.Detection.PersistenceWorkers,
+	)
 	videoDetectionUseCase := usecase.NewVideoDetectionUseCase(
 		defectService,
 		bridgeService,
 		pythonService,
 		fileService,
-		videopkg.NewFrameExtractor("ffmpeg"),
+		videopkg.NewFrameExtractor(""),
 		videoTaskRepo,
 		observationRepo,
 	)
@@ -155,11 +161,16 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// 1. 公开路由（无需登录）- 认证相关
 	registerPublicRoutes(api, authHandler)
+	registerLegacyPublicRoutes(r.Group("/api"), authHandler)
 
 	// 2. 认证路由（需要登录）
 	auth := api.Group("")
 	auth.Use(middleware.AuthRequired(db))
 	registerAuthRoutes(auth, authHandler, userHandler, bridgeHandler, droneHandler, detectionHandler, videoDetectionHandler, videoStreamHandler, defectHandler, statsHandler, reportHandler, bridgeRepo, droneRepo, reportRepo, defectService, cfg)
+
+	legacyAuth := r.Group("/api")
+	legacyAuth.Use(middleware.AuthRequired(db))
+	registerLegacyAuthRoutes(legacyAuth, authHandler, userHandler, bridgeHandler, detectionHandler)
 
 	// 3. 管理员路由（需要管理员权限）
 	admin := api.Group("/admin")
@@ -172,13 +183,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 // 这些接口无需登录即可访问
 func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) {
 	// 健康检查接口
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"message": "Bridge Detection System API is running",
-			"version": "v1",
-		})
-	})
+	r.GET("/health", healthHandler)
 
 	// ========== 用户认证（/auth前缀）==========
 	auth := r.Group("/auth")
@@ -186,6 +191,12 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 		auth.POST("/register", authHandler.Register) // POST /api/v1/auth/register
 		auth.POST("/login", authHandler.Login)       // POST /api/v1/auth/login
 	}
+}
+
+func registerLegacyPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	r.GET("/health", healthHandler)
+	r.POST("/register", authHandler.Register)
+	r.POST("/login", authHandler.Login)
 }
 
 // registerAuthRoutes 注册认证路由
@@ -242,6 +253,7 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 	detection := r.Group("/detection")
 	{
 		detection.POST("/upload", detectionHandler.UploadAndDetect) // POST /api/v1/detection/upload
+		detection.GET("/persistence/:task_id", detectionHandler.GetPersistenceStatus)
 		detection.POST("/video/upload", videoDetectionHandler.UploadVideo)
 		detection.POST("/video/:task_id/start", videoDetectionHandler.StartTask)
 		detection.GET("/video/:task_id", videoDetectionHandler.GetTask)
@@ -289,6 +301,22 @@ func registerAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, us
 			reportResource.DELETE("", reportHandler.DeleteReport)         // DELETE /api/v1/reports/:id
 		}
 	}
+}
+
+func registerLegacyAuthRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler, userHandler *handler.UserHandler, bridgeHandler *handler.BridgeHandler, detectionHandler *handler.DetectionHandler) {
+	r.POST("/logout", authHandler.Logout)
+	r.GET("/user/info", userHandler.GetUserInfo)
+	r.GET("/bridges", bridgeHandler.ListBridges)
+	r.POST("/bridges", bridgeHandler.CreateBridge)
+	r.POST("/detect/image", detectionHandler.UploadAndDetect)
+}
+
+func healthHandler(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"status":  "ok",
+		"message": "Bridge Detection System API is running",
+		"version": "v1",
+	})
 }
 
 // registerAdminRoutes 注册管理员路由

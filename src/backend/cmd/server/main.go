@@ -64,7 +64,8 @@ func startServer(r http.Handler, cfg *config.Config) {
 	go func() {
 		log.Printf("✓ 服务器启动成功")
 		log.Printf("✓ 监听地址: http://localhost%s\n", addr)
-		log.Printf("✓ 健康检查: http://localhost%s/api/health\n", addr)
+		log.Printf("✓ 健康检查: http://localhost%s/api/v1/health\n", addr)
+		log.Printf("✓ 兼容健康检查: http://localhost%s/api/health\n", addr)
 		log.Println("✓ 按 Ctrl+C 优雅退出")
 		log.Println("\n========== 服务器运行中 ==========")
 
@@ -121,16 +122,18 @@ func printRoutes(r interface{}) {
 	// 在实际使用中，可以通过 gin.Engine 的 Routes() 方法获取所有路由
 	log.Println("✓ 路由注册完成")
 	log.Println("  公开路由:")
-	log.Println("    GET  /api/health          - 健康检查")
-	log.Println("    POST /api/register        - 用户注册（待实现）")
-	log.Println("    POST /api/login           - 用户登录（待实现）")
+	log.Println("    GET  /api/v1/health       - 健康检查")
+	log.Println("    GET  /api/health          - 健康检查（兼容路径）")
+	log.Println("    POST /api/v1/auth/register - 用户注册")
+	log.Println("    POST /api/v1/auth/login    - 用户登录")
 	log.Println("")
 	log.Println("  认证路由:")
-	log.Println("    POST   /api/logout        - 退出登录（待实现）")
-	log.Println("    GET    /api/user/info     - 获取用户信息（待实现）")
-	log.Println("    GET    /api/bridges       - 桥梁列表（待实现）")
-	log.Println("    POST   /api/detect/image  - 图片检测（待实现）")
-	log.Println("    ...    更多接口待实现")
+	log.Println("    POST   /api/v1/auth/logout    - 退出登录")
+	log.Println("    GET    /api/v1/user/profile   - 获取用户信息")
+	log.Println("    GET    /api/v1/bridges        - 桥梁列表")
+	log.Println("    POST   /api/v1/detection/upload - 图片检测")
+	log.Println("    POST   /api/detect/image      - 图片检测（兼容路径）")
+	log.Println("    ...    更多业务接口见 /api/v1/*")
 	log.Println("")
 	log.Println("  管理员路由:")
 	log.Println("    GET  /api/admin/users     - 用户管理（待实现）")
@@ -203,7 +206,8 @@ func printRoutes(r interface{}) {
   ./bridge-server
 
 访问地址：
-  健康检查: http://localhost:8080/api/health
+  健康检查: http://localhost:8080/api/v1/health
+  兼容健康检查: http://localhost:8080/api/health
   API 文档: http://localhost:8080/api/docs (待添加)
 
 ========================================

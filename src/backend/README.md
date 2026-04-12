@@ -86,7 +86,7 @@ go run cmd/server/main.go
 访问健康检查接口：
 
 ```bash
-curl http://localhost:8080/api/health
+curl http://localhost:8080/api/v1/health
 ```
 
 返回：
@@ -141,20 +141,22 @@ cors:
 
 | 方法 | 路径 | 说明 | 状态 |
 |------|------|------|------|
-| GET | `/api/health` | 健康检查 | ✅ |
-| POST | `/api/register` | 用户注册 | 🚧 待实现 |
-| POST | `/api/login` | 用户登录 | 🚧 待实现 |
+| GET | `/api/v1/health` | 健康检查 | ✅ |
+| GET | `/api/health` | 健康检查（兼容路径） | ✅ |
+| POST | `/api/v1/auth/register` | 用户注册 | ✅ |
+| POST | `/api/v1/auth/login` | 用户登录 | ✅ |
 
 ### 认证接口（需要登录）
 
 | 方法 | 路径 | 说明 | 状态 |
 |------|------|------|------|
-| POST | `/api/logout` | 退出登录 | 🚧 待实现 |
-| GET | `/api/user/info` | 获取用户信息 | 🚧 待实现 |
-| GET | `/api/bridges` | 获取桥梁列表 | 🚧 待实现 |
-| POST | `/api/bridges` | 创建桥梁 | 🚧 待实现 |
-| GET | `/api/bridges/:id` | 获取桥梁详情 | 🚧 待实现 |
-| POST | `/api/detect/image` | 图片检测 | 🚧 待实现 |
+| POST | `/api/v1/auth/logout` | 退出登录 | ✅ |
+| GET | `/api/v1/user/profile` | 获取用户信息 | ✅ |
+| GET | `/api/v1/bridges` | 获取桥梁列表 | ✅ |
+| POST | `/api/v1/bridges` | 创建桥梁 | ✅ |
+| GET | `/api/v1/bridges/:id` | 获取桥梁详情 | ✅ |
+| POST | `/api/v1/detection/upload` | 图片检测 | ✅ |
+| POST | `/api/detect/image` | 图片检测（兼容路径） | ✅ |
 
 ### 管理员接口（需要管理员权限）
 

@@ -30,6 +30,14 @@ func (r *DefectRepositoryImpl) Create(defect *model.Defect) error {
 	return r.db.Create(defect).Error
 }
 
+// CreateBatch 批量创建缺陷记录。
+func (r *DefectRepositoryImpl) CreateBatch(defects []*model.Defect) error {
+	if len(defects) == 0 {
+		return nil
+	}
+	return r.db.Create(&defects).Error
+}
+
 // FindByID 根据ID查询缺陷
 func (r *DefectRepositoryImpl) FindByID(id uint) (*model.Defect, error) {
 	var defect model.Defect

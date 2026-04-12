@@ -48,6 +48,7 @@ logs/
 tmp/
 temp/
 *.tmp
+.local-tools/
 
 # Python相关（如果有）
 __pycache__/

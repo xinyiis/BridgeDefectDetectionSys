@@ -29,36 +29,25 @@ func (s *MockPythonService) DetectDefect(imagePath, modelName string, pixelRatio
 	numDefects := rand.Intn(3) + 1
 
 	defects := make([]service.DefectDetection, numDefects)
-	defectTypes := []string{"裂缝", "剥落", "破损", "渗水", "锈蚀"}
+	defectTypes := []string{"Crack", "Comb", "Breakage", "Seepage", "Reinforcement"}
 
 	for i := 0; i < numDefects; i++ {
 		// 随机选择缺陷类型
 		defectType := defectTypes[rand.Intn(len(defectTypes))]
 
-		// 生成随机边界框
-		x := rand.Intn(1000)
-		y := rand.Intn(800)
-		bboxWidth := rand.Intn(200) + 50
-		bboxHeight := rand.Intn(100) + 20
-
-		// 计算实际尺寸（像素 * 像素系数）
-		lengthPixels := float64(bboxWidth)
-		widthPixels := float64(bboxHeight)
-		defectLength := lengthPixels * pixelRatio
-		defectWidth := widthPixels * pixelRatio
-		defectArea := defectLength * defectWidth
+		boxWidthRatio := 0.1 + rand.Float64()*0.2
+		boxHeightRatio := 0.05 + rand.Float64()*0.15
+		xCenter := boxWidthRatio/2 + rand.Float64()*(1-boxWidthRatio)
+		yCenter := boxHeightRatio/2 + rand.Float64()*(1-boxHeightRatio)
 
 		defects[i] = service.DefectDetection{
 			DefectType: defectType,
 			BBox: service.BBoxData{
-				X:      x,
-				Y:      y,
-				Width:  bboxWidth,
-				Height: bboxHeight,
+				YOLOCoords: [4]float64{xCenter, yCenter, boxWidthRatio, boxHeightRatio},
 			},
-			Length:     defectLength,
-			Width:      defectWidth,
-			Area:       defectArea,
+			Length:     0,
+			Width:      0,
+			Area:       0,
 			Confidence: 0.80 + rand.Float64()*0.2, // 0.8-1.0
 		}
 	}

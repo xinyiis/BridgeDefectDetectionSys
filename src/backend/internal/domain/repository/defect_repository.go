@@ -17,6 +17,9 @@ type DefectRepository interface {
 	//   - error: 操作错误
 	Create(defect *model.Defect) error
 
+	// CreateBatch 批量创建缺陷记录
+	CreateBatch(defects []*model.Defect) error
+
 	// FindByID 根据ID查询缺陷
 	// 参数：
 	//   - id: 缺陷ID

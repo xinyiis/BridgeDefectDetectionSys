@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -12,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -45,7 +49,7 @@ func setupDetectionTestDB(t *testing.T) *gorm.DB {
 }
 
 // setupDetectionTestRouter 创建检测测试路由
-func setupDetectionTestRouter(db *gorm.DB) *gin.Engine {
+func setupDetectionTestRouter(db *gorm.DB) (*gin.Engine, *usecase.DetectionUseCase) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 
@@ -87,6 +91,7 @@ func setupDetectionTestRouter(db *gorm.DB) *gin.Engine {
 		detection := auth.Group("/detection")
 		{
 			detection.POST("/upload", detectionHandler.UploadAndDetect)
+			detection.GET("/persistence/:task_id", detectionHandler.GetPersistenceStatus)
 		}
 
 		// 缺陷管理
@@ -103,7 +108,7 @@ func setupDetectionTestRouter(db *gorm.DB) *gin.Engine {
 		}
 	}
 
-	return r
+	return r, detectionUseCase
 }
 
 // createDetectionTestUser 创建测试用户
@@ -173,14 +178,26 @@ func loginDetectionTest(t *testing.T, router *gin.Engine, username, password str
 func createTestImageFile(t *testing.T) string {
 	// 创建临时测试图片
 	tmpDir := "./test_uploads/images"
-	os.MkdirAll(tmpDir, 0755)
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		t.Fatalf("Failed to create test uploads dir: %v", err)
+	}
 	tmpFile := filepath.Join(tmpDir, "test_image.jpg")
 
-	// 写入简单的JPEG头（模拟图片）
-	jpegHeader := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}
-	err := os.WriteFile(tmpFile, jpegHeader, 0644)
+	img := image.NewRGBA(image.Rect(0, 0, 120, 80))
+	for y := 0; y < 80; y++ {
+		for x := 0; x < 120; x++ {
+			img.Set(x, y, color.RGBA{R: 220, G: 220, B: 220, A: 255})
+		}
+	}
+
+	file, err := os.Create(tmpFile)
 	if err != nil {
 		t.Fatalf("Failed to create test image: %v", err)
+	}
+	defer file.Close()
+
+	if err := jpeg.Encode(file, img, &jpeg.Options{Quality: 85}); err != nil {
+		t.Fatalf("Failed to encode test image: %v", err)
 	}
 
 	return tmpFile
@@ -194,7 +211,8 @@ func cleanupTestFiles() {
 // TestUploadAndDetect_Success 测试上传检测成功
 func TestUploadAndDetect_Success(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 	defer cleanupTestFiles()
 
 	// 创建测试数据
@@ -256,7 +274,22 @@ func TestUploadAndDetect_Success(t *testing.T) {
 		t.Errorf("Expected at least 1 defect, got %v", data["total_defects"])
 	}
 
-	// 验证数据库中创建了缺陷记录
+	if status, ok := data["persistence_status"].(string); !ok || status != "pending" {
+		t.Fatalf("expected persistence_status=pending, got %#v", data["persistence_status"])
+	}
+	taskID, _ := data["persistence_task_id"].(string)
+	if taskID == "" {
+		t.Fatalf("expected persistence_task_id")
+	}
+
+	status, err := detectionUseCase.WaitForPersistenceTask(taskID, 2*time.Second)
+	if err != nil {
+		t.Fatalf("wait for persistence task: %v", err)
+	}
+	if status.Status != "completed" {
+		t.Fatalf("expected completed status, got %s (%s)", status.Status, status.ErrorMessage)
+	}
+
 	var count int64
 	db.Model(&model.Defect{}).Where("bridge_id = ?", bridge.ID).Count(&count)
 	if count < 1 {
@@ -267,7 +300,8 @@ func TestUploadAndDetect_Success(t *testing.T) {
 // TestUploadAndDetect_InvalidFile 测试上传无效文件
 func TestUploadAndDetect_InvalidFile(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 	defer cleanupTestFiles()
 
 	user := createDetectionTestUser(db, "testuser", "user")
@@ -303,7 +337,8 @@ func TestUploadAndDetect_InvalidFile(t *testing.T) {
 // TestUploadAndDetect_InvalidBridge 测试桥梁不存在
 func TestUploadAndDetect_InvalidBridge(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 	defer cleanupTestFiles()
 
 	createDetectionTestUser(db, "testuser", "user")
@@ -342,7 +377,8 @@ func TestUploadAndDetect_InvalidBridge(t *testing.T) {
 // TestUploadAndDetect_NotOwnedBridge 测试访问他人桥梁
 func TestUploadAndDetect_NotOwnedBridge(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 	defer cleanupTestFiles()
 
 	createDetectionTestUser(db, "user1", "user")
@@ -385,7 +421,8 @@ func TestUploadAndDetect_NotOwnedBridge(t *testing.T) {
 // TestListDefects_PermissionFilter 测试缺陷列表权限过滤
 func TestListDefects_PermissionFilter(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 
 	// 创建两个用户和各自的桥梁、缺陷
 	user1 := createDetectionTestUser(db, "user1", "user")
@@ -441,7 +478,8 @@ func TestListDefects_PermissionFilter(t *testing.T) {
 // TestListDefects_FilterByBridge 测试按桥梁过滤
 func TestListDefects_FilterByBridge(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 
 	user := createDetectionTestUser(db, "testuser", "user")
 	bridge1 := createDetectionTestBridge(db, user.ID, "桥梁1")
@@ -478,7 +516,8 @@ func TestListDefects_FilterByBridge(t *testing.T) {
 // TestGetDefect_Success 测试获取缺陷详情成功
 func TestGetDefect_Success(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 
 	user := createDetectionTestUser(db, "testuser", "user")
 	bridge := createDetectionTestBridge(db, user.ID, "测试桥梁")
@@ -513,7 +552,8 @@ func TestGetDefect_Success(t *testing.T) {
 // TestGetDefect_Forbidden 测试访问他人缺陷被拒
 func TestGetDefect_Forbidden(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 
 	createDetectionTestUser(db, "user1", "user")
 	user2 := createDetectionTestUser(db, "user2", "user")
@@ -540,7 +580,8 @@ func TestGetDefect_Forbidden(t *testing.T) {
 // TestDeleteDefect_Success 测试删除缺陷成功
 func TestDeleteDefect_Success(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	router := setupDetectionTestRouter(db)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
 	defer cleanupTestFiles()
 
 	user := createDetectionTestUser(db, "testuser", "user")
@@ -575,5 +616,91 @@ func TestDeleteDefect_Success(t *testing.T) {
 	result = db.First(&normalQuery, defect.ID)
 	if result.Error == nil {
 		t.Errorf("Soft deleted defect should not be found in normal query")
+	}
+}
+
+func TestGetPersistenceStatus_Success(t *testing.T) {
+	db := setupDetectionTestDB(t)
+	router, detectionUseCase := setupDetectionTestRouter(db)
+	defer detectionUseCase.Shutdown()
+	defer cleanupTestFiles()
+
+	user := createDetectionTestUser(db, "persist_user", "user")
+	bridge := createDetectionTestBridge(db, user.ID, "状态桥梁")
+	cookies := loginDetectionTest(t, router, "persist_user", "123456")
+
+	testImagePath := createTestImageFile(t)
+	defer os.Remove(testImagePath)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	file, err := os.Open(testImagePath)
+	if err != nil {
+		t.Fatalf("open test image: %v", err)
+	}
+	defer file.Close()
+
+	part, err := writer.CreateFormFile("image", "test.jpg")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		t.Fatalf("copy image: %v", err)
+	}
+	_ = writer.WriteField("bridge_id", fmt.Sprintf("%d", bridge.ID))
+	_ = writer.WriteField("model_name", "yolov8")
+	_ = writer.WriteField("pixel_ratio", "0.001")
+	_ = writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/detection/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload failed: %d %s", w.Code, w.Body.String())
+	}
+
+	var uploadResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &uploadResp); err != nil {
+		t.Fatalf("unmarshal upload response: %v", err)
+	}
+	data := uploadResp["data"].(map[string]interface{})
+	taskID := data["persistence_task_id"].(string)
+	if taskID == "" {
+		t.Fatalf("expected persistence task id")
+	}
+
+	if _, err := detectionUseCase.WaitForPersistenceTask(taskID, 2*time.Second); err != nil {
+		t.Fatalf("wait for task: %v", err)
+	}
+
+	statusReq := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/detection/persistence/%s", taskID), nil)
+	for _, cookie := range cookies {
+		statusReq.AddCookie(cookie)
+	}
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+
+	if statusW.Code != http.StatusOK {
+		t.Fatalf("status failed: %d %s", statusW.Code, statusW.Body.String())
+	}
+
+	var statusResp map[string]interface{}
+	if err := json.Unmarshal(statusW.Body.Bytes(), &statusResp); err != nil {
+		t.Fatalf("unmarshal status response: %v", err)
+	}
+	statusData := statusResp["data"].(map[string]interface{})
+	if statusData["status"] != "completed" {
+		t.Fatalf("expected completed status, got %#v", statusData["status"])
+	}
+	if statusData["image_path"] == "" {
+		t.Fatalf("expected image_path in status response")
+	}
+	if ids, ok := statusData["saved_defect_ids"].([]interface{}); !ok || len(ids) == 0 {
+		t.Fatalf("expected saved_defect_ids, got %#v", statusData["saved_defect_ids"])
 	}
 }

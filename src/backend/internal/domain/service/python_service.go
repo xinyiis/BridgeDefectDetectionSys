@@ -51,10 +51,11 @@ type DefectDetection struct {
 
 // BBoxData 边界框数据
 type BBoxData struct {
-	X      int `json:"x"`      // X坐标（像素）
-	Y      int `json:"y"`      // Y坐标（像素）
-	Width  int `json:"width"`  // 宽度（像素）
-	Height int `json:"height"` // 高度（像素）
+	X          int        `json:"x"`           // X坐标（像素）
+	Y          int        `json:"y"`           // Y坐标（像素）
+	Width      int        `json:"width"`       // 宽度（像素）
+	Height     int        `json:"height"`      // 高度（像素）
+	YOLOCoords [4]float64 `json:"yolo_coords"` // 算法原始返回的归一化坐标
 }
 
 // DetectRequest YOLO 检测请求。

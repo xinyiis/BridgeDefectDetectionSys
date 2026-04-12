@@ -8,6 +8,9 @@
 
 set -e  # 遇到错误立即退出
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -46,6 +49,7 @@ show_help() {
     echo "安装组件:"
     echo "  - Go 1.25.0"
     echo "  - MySQL 8.0 (root/123456)"
+    echo "  - 本地 FFmpeg / FFprobe（仓库根目录 .local-tools）"
     echo "  - Go依赖包（Gin, GORM, gofpdf, go-chart等）"
     echo "  - PDF报表生成支持（思源黑体字体、报表目录）"
     echo ""
@@ -264,7 +268,20 @@ update_system() {
 # 安装基础依赖
 install_dependencies() {
     print_info "安装基础依赖..."
-    sudo apt-get install -y wget curl git build-essential
+    sudo apt-get install -y wget curl git build-essential xz-utils
+
+    # SSH 隧道自动化工具（用于连接远程算法服务器）
+    if ! command -v sshpass &> /dev/null; then
+        print_info "安装 sshpass（SSH 隧道自动化）..."
+        sudo apt-get install -y sshpass
+    else
+        print_success "sshpass 已安装，跳过"
+    fi
+
+    # FFmpeg / FFprobe 统一安装到仓库本地工具目录，避免团队环境漂移
+    print_info "安装本地 FFmpeg / FFprobe（固定仓库工具路径）..."
+    bash "${REPO_ROOT}/environment-setup/install_ffmpeg_local.sh"
+
     print_success "基础依赖安装完成"
 }
 
@@ -532,6 +549,7 @@ show_summary() {
     echo "📦 已安装组件："
     echo "  - Go $(go version | awk '{print $3}')"
     echo "  - MySQL $(mysql -uroot -p123456 -e "SELECT VERSION();" -s -N 2>/dev/null || echo "8.0")"
+    echo "  - FFmpeg $("${REPO_ROOT}/.local-tools/ffmpeg/bin/ffmpeg" -version 2>/dev/null | sed -n '1p' || echo "未安装")"
     echo "  - Go依赖包（Gin, GORM, gofpdf, go-chart等）"
     echo "  - PDF报表生成支持（中文字体、报表目录）"
     echo ""

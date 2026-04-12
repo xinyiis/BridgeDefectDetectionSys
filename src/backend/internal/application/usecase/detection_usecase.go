@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/dto"
@@ -19,6 +22,14 @@ type DetectionUseCase struct {
 	bridgeService *service.BridgeService // 桥梁领域服务
 	pythonService service.PythonService  // Python检测服务
 	fileService   service.FileService    // 文件服务
+
+	persistenceQueue   chan detectionPersistenceTask
+	persistenceWorkers int
+	persistenceMu      sync.RWMutex
+	persistenceRecords map[string]*detectionPersistenceRecord
+	workerWG           sync.WaitGroup
+	closeOnce          sync.Once
+	stopCh             chan struct{}
 }
 
 // NewDetectionUseCase 创建检测用例实例
@@ -36,12 +47,34 @@ func NewDetectionUseCase(
 	pythonService service.PythonService,
 	fileService service.FileService,
 ) *DetectionUseCase {
-	return &DetectionUseCase{
-		defectService: defectService,
-		bridgeService: bridgeService,
-		pythonService: pythonService,
-		fileService:   fileService,
+	return NewDetectionUseCaseWithPersistenceWorkers(defectService, bridgeService, pythonService, fileService, 2)
+}
+
+// NewDetectionUseCaseWithPersistenceWorkers 创建支持自定义持久化 worker 数量的检测用例实例。
+func NewDetectionUseCaseWithPersistenceWorkers(
+	defectService *service.DefectService,
+	bridgeService *service.BridgeService,
+	pythonService service.PythonService,
+	fileService service.FileService,
+	persistenceWorkers int,
+) *DetectionUseCase {
+	if persistenceWorkers <= 0 {
+		persistenceWorkers = 2
 	}
+
+	uc := &DetectionUseCase{
+		defectService:      defectService,
+		bridgeService:      bridgeService,
+		pythonService:      pythonService,
+		fileService:        fileService,
+		persistenceQueue:   make(chan detectionPersistenceTask, 32),
+		persistenceWorkers: persistenceWorkers,
+		persistenceRecords: make(map[string]*detectionPersistenceRecord),
+		stopCh:             make(chan struct{}),
+	}
+
+	uc.startPersistenceWorkers(persistenceWorkers)
+	return uc
 }
 
 // UploadAndDetect 上传图片并进行缺陷检测
@@ -69,38 +102,70 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 		return nil, errors.New("无权访问此桥梁")
 	}
 
-	// 2. 保存上传的图片
-	imagePath, err := uc.fileService.SaveImage(req.Image, "images")
+	// 2. 同步保存临时图片，供算法读取
+	tempImagePath, err := uc.fileService.SaveTempImage(req.Image)
 	if err != nil {
 		return nil, fmt.Errorf("图片保存失败: %w", err)
 	}
 
-	// 3. 调用Python服务检测（返回多个缺陷）
-	pythonResult, err := uc.pythonService.DetectDefect(imagePath, req.ModelName, req.PixelRatio)
+	resolvedImagePath := uc.fileService.ResolvePath(tempImagePath)
+	imgW, imgH, err := getImageDimensions(resolvedImagePath)
 	if err != nil {
-		// 回滚：删除已上传的图片
-		uc.fileService.DeleteFile(imagePath)
+		_ = uc.fileService.DeleteFile(tempImagePath)
+		return nil, fmt.Errorf("读取图片尺寸失败: %w", err)
+	}
+
+	// 3. 调用Python服务检测（返回多个缺陷）
+	pythonResult, err := uc.pythonService.DetectDefect(resolvedImagePath, req.ModelName, req.PixelRatio)
+	if err != nil {
+		// 回滚：删除临时图片
+		uc.fileService.DeleteFile(tempImagePath)
 		return nil, fmt.Errorf("AI检测失败: %w", err)
 	}
 
-	// 4. 保存结果图（如果有）- 只有一张，包含所有缺陷标注
+	imageExt := strings.ToLower(filepath.Ext(req.Image.Filename))
+	if imageExt == "" {
+		imageExt = ".jpg"
+	}
+	imagePath, err := uc.fileService.AllocateImagePath("images", imageExt)
+	if err != nil {
+		_ = uc.fileService.DeleteFile(tempImagePath)
+		return nil, fmt.Errorf("分配原图路径失败: %w", err)
+	}
+
 	var resultPath string
 	if pythonResult.ResultImage != "" {
-		resultPath, err = uc.fileService.SaveResultImage(pythonResult.ResultImage, "results")
+		resultPath, err = uc.fileService.AllocateImagePath("results", ".jpg")
 		if err != nil {
-			// 回滚：删除原图
-			uc.fileService.DeleteFile(imagePath)
-			return nil, fmt.Errorf("结果图保存失败: %w", err)
+			_ = uc.fileService.DeleteFile(tempImagePath)
+			return nil, fmt.Errorf("分配结果图路径失败: %w", err)
 		}
 	}
 
-	// 5. 为每个检测到的缺陷创建数据库记录
+	// 5. 在内存中构造缺陷结果，不阻塞数据库写入
 	defects := make([]*model.Defect, 0, len(pythonResult.Defects))
 
 	for _, detectedDefect := range pythonResult.Defects {
+		defectType := translateAlgorithmDefectType(detectedDefect.DefectType)
+		if hasYOLOCoords(detectedDefect.BBox.YOLOCoords) {
+			x, y, w, h, length, width, area := service.CalculatePhysicalDimensions(
+				detectedDefect.BBox.YOLOCoords,
+				imgW,
+				imgH,
+				req.PixelRatio,
+			)
+			detectedDefect.BBox.X = x
+			detectedDefect.BBox.Y = y
+			detectedDefect.BBox.Width = w
+			detectedDefect.BBox.Height = h
+			detectedDefect.Length = length
+			detectedDefect.Width = width
+			detectedDefect.Area = area
+		}
+
 		defect := &model.Defect{
 			BridgeID:   req.BridgeID,
-			DefectType: detectedDefect.DefectType,
+			DefectType: defectType,
 			ImagePath:  imagePath,  // 共享同一张原图
 			ResultPath: resultPath, // 共享同一张结果图
 			BBox:       detectedDefect.BBoxJSON(),
@@ -110,36 +175,107 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 			Confidence: detectedDefect.Confidence,
 			DetectedAt: time.Now(),
 		}
-
-		if err := uc.defectService.CreateDefect(defect); err != nil {
-			log.Printf("保存缺陷记录失败: %v", err)
-			continue // 继续处理其他缺陷
-		}
-
 		defects = append(defects, defect)
 	}
 
-	// 6. 如果一个缺陷都没保存成功，删除文件
-	if len(defects) == 0 && len(pythonResult.Defects) > 0 {
-		uc.fileService.DeleteFile(imagePath)
-		if resultPath != "" {
-			uc.fileService.DeleteFile(resultPath)
-		}
-		return nil, errors.New("保存缺陷记录失败")
+	taskID := uc.newPersistenceTaskID()
+	record := uc.registerPersistenceTask(taskID, req.BridgeID, imagePath, resultPath)
+	task := detectionPersistenceTask{
+		TaskID:            taskID,
+		BridgeID:          req.BridgeID,
+		TempImagePath:     tempImagePath,
+		FinalImagePath:    imagePath,
+		FinalResultPath:   resultPath,
+		ResultImageBase64: pythonResult.ResultImage,
+		Defects:           defects,
+		CreatedAt:         time.Now(),
+	}
+	if err := uc.enqueuePersistenceTask(task); err != nil {
+		record.Status = detectionPersistenceStatusFailed
+		record.ErrorMessage = err.Error()
+		record.UpdatedAt = time.Now()
+		uc.persistenceMu.Lock()
+		uc.persistenceRecords[taskID] = record
+		uc.persistenceMu.Unlock()
+		_ = uc.fileService.DeleteFile(tempImagePath)
+		log.Printf("投递检测持久化任务失败: %v", err)
+	} else {
+		_ = record
 	}
 
-	// 7. 计算处理时间
+	// 6. 计算处理时间（仅同步检测阶段）
 	processingTime := time.Since(startTime).Seconds()
 
-	// 8. 返回多个缺陷结果
-	return &dto.DetectionResponse{
-		TotalDefects:   len(defects),
-		ImagePath:      imagePath,
-		ResultPath:     resultPath,
-		ProcessingTime: processingTime,
-		Defects:        uc.toDefectDTOs(defects),
-		DefectSummary:  uc.buildDefectSummary(defects),
-	}, nil
+	// 7. 返回多个缺陷结果
+	response := &dto.DetectionResponse{
+		TotalDefects:      len(defects),
+		ImagePath:         imagePath,
+		ResultPath:        resultPath,
+		ProcessingTime:    processingTime,
+		PersistenceStatus: uc.currentPersistenceStatus(taskID),
+		PersistenceTaskID: taskID,
+		Defects:           uc.toDefectDTOs(defects),
+		DefectSummary:     uc.buildDefectSummary(defects),
+	}
+	if response.PersistenceStatus == detectionPersistenceStatusFailed {
+		if status, statusErr := uc.GetPersistenceTaskStatus(taskID, currentUser); statusErr == nil {
+			response.PersistenceMessage = status.ErrorMessage
+		}
+	}
+
+	return response, nil
+}
+
+// GetPersistenceTaskStatus 查询持久化任务状态。
+func (uc *DetectionUseCase) GetPersistenceTaskStatus(taskID string, currentUser *model.User) (*dto.DetectionPersistenceStatusResponse, error) {
+	record := uc.getPersistenceRecord(taskID)
+	if record == nil {
+		return nil, errors.New("持久化任务不存在")
+	}
+
+	bridge, err := uc.bridgeService.GetByID(record.BridgeID)
+	if err != nil {
+		return nil, err
+	}
+	if bridge == nil {
+		return nil, errors.New("桥梁不存在")
+	}
+	if !currentUser.IsAdmin() && !bridge.IsOwnedBy(currentUser.ID) {
+		return nil, errors.New("无权访问此桥梁")
+	}
+
+	return uc.buildPersistenceStatusResponse(record), nil
+}
+
+// WaitForPersistenceTask 等待指定持久化任务结束（仅供测试/调试使用）。
+func (uc *DetectionUseCase) WaitForPersistenceTask(taskID string, timeout time.Duration) (*dto.DetectionPersistenceStatusResponse, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		record := uc.getPersistenceRecord(taskID)
+		if record == nil {
+			return nil, errors.New("持久化任务不存在")
+		}
+		if record.Status == detectionPersistenceStatusCompleted || record.Status == detectionPersistenceStatusFailed {
+			return uc.buildPersistenceStatusResponse(record), nil
+		}
+		if time.Now().After(deadline) {
+			return nil, errors.New("等待持久化任务超时")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Shutdown 停止后台持久化 worker。
+func (uc *DetectionUseCase) Shutdown() {
+	uc.closeOnce.Do(func() {
+		close(uc.stopCh)
+		uc.workerWG.Wait()
+	})
+}
+
+// PersistenceWorkerCount 返回当前配置的持久化 worker 数量。
+func (uc *DetectionUseCase) PersistenceWorkerCount() int {
+	return uc.persistenceWorkers
 }
 
 // toDefectDTOs 转换为DTO列表
@@ -170,4 +306,27 @@ func (uc *DetectionUseCase) buildDefectSummary(defects []*model.Defect) map[stri
 		summary[defect.DefectType]++
 	}
 	return summary
+}
+
+func hasYOLOCoords(coords [4]float64) bool {
+	return coords != [4]float64{}
+}
+
+func translateAlgorithmDefectType(defectType string) string {
+	switch defectType {
+	case "Crack":
+		return "裂缝"
+	case "Breakage":
+		return "破损"
+	case "Comb":
+		return "剥落"
+	case "Hole":
+		return "孔洞"
+	case "Reinforcement":
+		return "钢筋外露"
+	case "Seepage":
+		return "渗水"
+	default:
+		return defectType
+	}
 }
