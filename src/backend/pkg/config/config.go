@@ -17,6 +17,7 @@ type Config struct {
 	Database      DatabaseConfig      `yaml:"database"`       // 数据库配置
 	PythonService PythonServiceConfig `yaml:"python_service"` // Python 算法服务配置
 	Detection     DetectionConfig     `yaml:"detection"`      // 检测流程配置
+	VideoDetection VideoDetectionConfig `yaml:"video_detection"` // 视频检测流程配置
 	Upload        UploadConfig        `yaml:"upload"`         // 文件上传配置
 	Session       SessionConfig       `yaml:"session"`        // Session 配置
 	CORS          CORSConfig          `yaml:"cors"`           // CORS 跨域配置
@@ -46,6 +47,20 @@ type PythonServiceConfig struct {
 // DetectionConfig 检测流程配置
 type DetectionConfig struct {
 	PersistenceWorkers int `yaml:"persistence_workers"` // 检测持久化后台 worker 数量
+}
+
+// VideoDetectionConfig 视频检测流程配置
+type VideoDetectionConfig struct {
+	SampleFPS                    float64 `yaml:"sample_fps"`                     // 默认抽帧频率
+	PlaybackDelaySeconds         int     `yaml:"playback_delay_seconds"`         // 前端播放缓冲时间
+	TrackWindowSeconds           int     `yaml:"track_window_seconds"`           // 轨迹匹配窗口
+	TrackCloseSeconds            int     `yaml:"track_close_seconds"`            // 轨迹关闭窗口
+	TrackIOUThreshold            float64 `yaml:"track_iou_threshold"`            // 轨迹匹配 IoU 阈值
+	TrackCenterDistanceThreshold float64 `yaml:"track_center_distance_threshold"` // 轨迹匹配中心点距离阈值
+	ConfirmHits                  int     `yaml:"confirm_hits"`                    // 正式缺陷确认的最少命中次数
+	CandidateConfidenceThreshold float64 `yaml:"candidate_confidence_threshold"` // 候选观测最低置信度
+	PersistConfidenceThreshold   float64 `yaml:"persist_confidence_threshold"`   // 正式缺陷入库最低置信度
+	MaxQueueInflight             int     `yaml:"max_queue_inflight"`             // 帧任务最大并发数
 }
 
 // UploadConfig 文件上传配置
@@ -158,6 +173,36 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.Detection.PersistenceWorkers <= 0 {
 		cfg.Detection.PersistenceWorkers = 2
+	}
+	if cfg.VideoDetection.SampleFPS <= 0 {
+		cfg.VideoDetection.SampleFPS = 1
+	}
+	if cfg.VideoDetection.PlaybackDelaySeconds <= 0 {
+		cfg.VideoDetection.PlaybackDelaySeconds = 6
+	}
+	if cfg.VideoDetection.TrackWindowSeconds <= 0 {
+		cfg.VideoDetection.TrackWindowSeconds = 3
+	}
+	if cfg.VideoDetection.TrackCloseSeconds <= 0 {
+		cfg.VideoDetection.TrackCloseSeconds = 4
+	}
+	if cfg.VideoDetection.TrackIOUThreshold <= 0 {
+		cfg.VideoDetection.TrackIOUThreshold = 0.3
+	}
+	if cfg.VideoDetection.TrackCenterDistanceThreshold <= 0 {
+		cfg.VideoDetection.TrackCenterDistanceThreshold = 0.08
+	}
+	if cfg.VideoDetection.ConfirmHits <= 0 {
+		cfg.VideoDetection.ConfirmHits = 3
+	}
+	if cfg.VideoDetection.CandidateConfidenceThreshold <= 0 {
+		cfg.VideoDetection.CandidateConfidenceThreshold = 0.45
+	}
+	if cfg.VideoDetection.PersistConfidenceThreshold <= 0 {
+		cfg.VideoDetection.PersistConfidenceThreshold = 0.55
+	}
+	if cfg.VideoDetection.MaxQueueInflight <= 0 {
+		cfg.VideoDetection.MaxQueueInflight = 8
 	}
 
 	return nil

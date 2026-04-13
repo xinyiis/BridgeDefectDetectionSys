@@ -39,6 +39,10 @@ func (h *VideoDetectionHandler) UploadVideo(c *gin.Context) {
 		response.BadRequest(c, "请上传视频文件")
 		return
 	}
+	if req.EnableSegment {
+		response.BadRequest(c, "视频检测链路仅支持 detect-only，暂不支持 enable_segment")
+		return
+	}
 
 	ext := strings.ToLower(filepath.Ext(req.Video.Filename))
 	switch ext {

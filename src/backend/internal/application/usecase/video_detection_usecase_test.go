@@ -15,6 +15,7 @@ import (
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/persistence"
+	appconfig "github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/config"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -75,6 +76,12 @@ func setupVideoUseCaseTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite failed: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql db failed: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	err = db.AutoMigrate(
 		&model.User{},
@@ -82,6 +89,7 @@ func setupVideoUseCaseTestDB(t *testing.T) *gorm.DB {
 		&model.Defect{},
 		&model.VideoAnalysisTask{},
 		&model.DefectObservation{},
+		&model.VideoFrameTaskRequest{},
 	)
 	if err != nil {
 		t.Fatalf("migrate failed: %v", err)
@@ -166,6 +174,7 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 	bridgeRepo := persistence.NewBridgeRepository(db)
 	defectRepo := persistence.NewDefectRepository(db)
 	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
 	observationRepo := persistence.NewDefectObservationRepository(db)
 	fileService := persistence.NewLocalFileStorage("./uploads")
 
@@ -188,6 +197,7 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 		fileService,
 		&stubFrameExtractor{frames: frames},
 		taskRepo,
+		frameTaskRepo,
 		observationRepo,
 	)
 
@@ -249,8 +259,11 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 	if defects[0].SourceTaskID == nil || *defects[0].SourceTaskID != task.TaskID {
 		t.Fatalf("expected source task id %s, got %#v", task.TaskID, defects[0].SourceTaskID)
 	}
-	if defects[0].BestFramePath == "" || defects[0].BestResultPath == "" {
-		t.Fatalf("expected persisted evidence paths, got frame=%s result=%s", defects[0].BestFramePath, defects[0].BestResultPath)
+	if defects[0].BestFramePath == "" {
+		t.Fatalf("expected persisted frame evidence path, got frame=%s", defects[0].BestFramePath)
+	}
+	if defects[0].BestResultPath != "" {
+		t.Fatalf("expected detect-only video path to keep best result path empty, got %s", defects[0].BestResultPath)
 	}
 
 	var observationCount int64
@@ -259,6 +272,14 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 	}
 	if observationCount != 3 {
 		t.Fatalf("expected 3 observations, got %d", observationCount)
+	}
+
+	var frameTaskCount int64
+	if err := db.Model(&model.VideoFrameTaskRequest{}).Count(&frameTaskCount).Error; err != nil {
+		t.Fatalf("count frame tasks failed: %v", err)
+	}
+	if frameTaskCount != 3 {
+		t.Fatalf("expected 3 frame task requests, got %d", frameTaskCount)
 	}
 
 	if len(rawMessages) < 3 {
@@ -289,6 +310,7 @@ func TestVideoDetectionUseCase_StreamTaskRejectsWrongUser(t *testing.T) {
 	bridgeRepo := persistence.NewBridgeRepository(db)
 	defectRepo := persistence.NewDefectRepository(db)
 	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
 	observationRepo := persistence.NewDefectObservationRepository(db)
 	fileService := persistence.NewLocalFileStorage("./uploads")
 	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
@@ -301,6 +323,7 @@ func TestVideoDetectionUseCase_StreamTaskRejectsWrongUser(t *testing.T) {
 		fileService,
 		&stubFrameExtractor{},
 		taskRepo,
+		frameTaskRepo,
 		observationRepo,
 	)
 
@@ -336,5 +359,83 @@ func TestCreateJPEGFrameProducesValidJPEG(t *testing.T) {
 	}
 	if !bytes.HasPrefix(data, []byte{0xFF, 0xD8}) {
 		t.Fatal("expected jpeg header")
+	}
+}
+
+func TestVideoDetectionUseCase_HonorsCandidateConfidenceThreshold(t *testing.T) {
+	db := setupVideoUseCaseTestDB(t)
+	user := createVideoTestUser(t, db)
+	bridge := createVideoTestBridge(t, db, user.ID)
+
+	bridgeRepo := persistence.NewBridgeRepository(db)
+	defectRepo := persistence.NewDefectRepository(db)
+	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
+	observationRepo := persistence.NewDefectObservationRepository(db)
+	fileService := persistence.NewLocalFileStorage("./uploads")
+	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
+	defectService := service.NewDefectService(db, defectRepo, bridgeRepo)
+
+	tempDir := t.TempDir()
+	frames := []string{
+		createJPEGFrame(t, tempDir, "frame_001.jpg"),
+		createJPEGFrame(t, tempDir, "frame_002.jpg"),
+		createJPEGFrame(t, tempDir, "frame_003.jpg"),
+	}
+
+	videoUC := usecase.NewVideoDetectionUseCaseWithConfig(
+		defectService,
+		bridgeService,
+		&stubPythonService{},
+		fileService,
+		&stubFrameExtractor{frames: frames},
+		taskRepo,
+		frameTaskRepo,
+		observationRepo,
+		appconfig.VideoDetectionConfig{
+			SampleFPS:                    1,
+			PlaybackDelaySeconds:         6,
+			TrackWindowSeconds:           3,
+			TrackCloseSeconds:            4,
+			TrackIOUThreshold:            0.3,
+			CandidateConfidenceThreshold: 0.95,
+			PersistConfidenceThreshold:   0.55,
+			MaxQueueInflight:             4,
+		},
+	)
+
+	task := &model.VideoAnalysisTask{
+		TaskID:     "video_task_threshold",
+		SessionID:  "session_threshold",
+		UserID:     user.ID,
+		BridgeID:   bridge.ID,
+		VideoPath:  "videos/test.mp4",
+		FPS:        1,
+		ModelName:  "baseline",
+		PixelRatio: 0.01,
+		Status:     model.VideoTaskReadyToProcess,
+	}
+	if err := taskRepo.Create(task); err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	if err := videoUC.StreamTask(task.TaskID, task.SessionID, user, func(any) error { return nil }); err != nil {
+		t.Fatalf("stream task failed: %v", err)
+	}
+
+	var observationCount int64
+	if err := db.Model(&model.DefectObservation{}).Count(&observationCount).Error; err != nil {
+		t.Fatalf("count observations failed: %v", err)
+	}
+	if observationCount != 0 {
+		t.Fatalf("expected no observations under high candidate threshold, got %d", observationCount)
+	}
+
+	var defectCount int64
+	if err := db.Model(&model.Defect{}).Count(&defectCount).Error; err != nil {
+		t.Fatalf("count defects failed: %v", err)
+	}
+	if defectCount != 0 {
+		t.Fatalf("expected no confirmed defects under high candidate threshold, got %d", defectCount)
 	}
 }

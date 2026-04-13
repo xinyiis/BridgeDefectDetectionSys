@@ -23,6 +23,18 @@ python_service:
 detection:
   persistence_workers: 2           # 检测持久化后台 worker 数量
 
+video_detection:
+  sample_fps: 1                    # 视频默认抽帧频率（每秒 1 帧）
+  playback_delay_seconds: 6        # 前端播放延迟缓冲
+  track_window_seconds: 3          # 同一轨迹的匹配时间窗口
+  track_close_seconds: 4           # 多久没有命中则关闭轨迹
+  track_iou_threshold: 0.3         # 轨迹匹配 IoU 阈值
+  track_center_distance_threshold: 0.08 # 轨迹匹配中心距离兜底阈值
+  confirm_hits: 3                  # 正式缺陷确认所需最少命中次数
+  candidate_confidence_threshold: 0.45 # 候选观测进入聚合的最低置信度
+  persist_confidence_threshold: 0.55   # 正式缺陷入库的最低平均置信度
+  max_queue_inflight: 8            # 视频帧 detect 最大并发数
+
 # 文件上传配置
 upload:
   image_dir: "./uploads/images"    # 原始图片保存目录

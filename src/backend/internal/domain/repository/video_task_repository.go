@@ -8,3 +8,10 @@ type VideoTaskRepository interface {
 	FindByTaskID(taskID string) (*model.VideoAnalysisTask, error)
 	Update(task *model.VideoAnalysisTask) error
 }
+
+// VideoFrameTaskRepository 视频帧级请求仓储接口。
+type VideoFrameTaskRepository interface {
+	Create(frameTask *model.VideoFrameTaskRequest) error
+	FindByRequestID(requestID string) (*model.VideoFrameTaskRequest, error)
+	Update(frameTask *model.VideoFrameTaskRequest) error
+}

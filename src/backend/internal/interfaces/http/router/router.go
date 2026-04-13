@@ -95,6 +95,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	droneRepo := persistence.NewDroneRepository(db)
 	defectRepo := persistence.NewDefectRepository(db)
 	videoTaskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
 	observationRepo := persistence.NewDefectObservationRepository(db)
 
 	// 2. Service 层
@@ -127,14 +128,16 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		fileService,
 		cfg.Detection.PersistenceWorkers,
 	)
-	videoDetectionUseCase := usecase.NewVideoDetectionUseCase(
+	videoDetectionUseCase := usecase.NewVideoDetectionUseCaseWithConfig(
 		defectService,
 		bridgeService,
 		pythonService,
 		fileService,
 		videopkg.NewFrameExtractor(""),
 		videoTaskRepo,
+		frameTaskRepo,
 		observationRepo,
+		cfg.VideoDetection,
 	)
 	defectUseCase := usecase.NewDefectUseCase(defectService, fileService)
 	statsUseCase := usecase.NewStatsUseCase(statsService)
@@ -151,6 +154,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	detectionHandler := handler.NewDetectionHandler(detectionUseCase)
 	videoDetectionHandler := handler.NewVideoDetectionHandler(videoDetectionUseCase)
 	videoStreamHandler := handler.NewVideoStreamHandler(videoDetectionUseCase)
+	videoCallbackHandler := handler.NewVideoCallbackHandler(videoDetectionUseCase)
 	defectHandler := handler.NewDefectHandler(defectUseCase)
 	statsHandler := handler.NewStatsHandler(statsUseCase)
 	reportHandler := handler.NewReportHandler(reportUseCase)
@@ -161,6 +165,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// 1. 公开路由（无需登录）- 认证相关
 	registerPublicRoutes(api, authHandler)
+	registerVideoCallbackRoutes(api, videoCallbackHandler)
 	registerLegacyPublicRoutes(r.Group("/api"), authHandler)
 
 	// 2. 认证路由（需要登录）
@@ -177,6 +182,17 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	admin.Use(middleware.AuthRequired(db))
 	admin.Use(middleware.AdminRequired())
 	registerAdminRoutes(admin, userHandler)
+}
+
+func registerVideoCallbackRoutes(r *gin.RouterGroup, videoCallbackHandler *handler.VideoCallbackHandler) {
+	callback := r.Group("/detection/video/callback")
+	{
+		callback.POST("/task-queued", videoCallbackHandler.TaskQueued)
+		callback.POST("/task-started", videoCallbackHandler.TaskStarted)
+		callback.POST("/frame-result", videoCallbackHandler.FrameResult)
+		callback.POST("/task-completed", videoCallbackHandler.TaskCompleted)
+		callback.POST("/task-failed", videoCallbackHandler.TaskFailed)
+	}
 }
 
 // registerPublicRoutes 注册公开路由

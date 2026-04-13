@@ -49,6 +49,7 @@ tmp/
 temp/
 *.tmp
 .local-tools/
+.omx/
 
 # Python相关（如果有）
 __pycache__/

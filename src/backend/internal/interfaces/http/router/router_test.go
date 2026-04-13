@@ -27,6 +27,7 @@ func setupRouterTestDB(t *testing.T) *gorm.DB {
 		&model.Defect{},
 		&model.VideoAnalysisTask{},
 		&model.DefectObservation{},
+		&model.VideoFrameTaskRequest{},
 	); err != nil {
 		t.Fatalf("migrate sqlite db: %v", err)
 	}
@@ -41,6 +42,16 @@ func setupRouterTestConfig() *config.Config {
 		},
 		PythonService: config.PythonServiceConfig{
 			Enabled: false,
+		},
+		VideoDetection: config.VideoDetectionConfig{
+			SampleFPS:                    1,
+			PlaybackDelaySeconds:         6,
+			TrackWindowSeconds:           3,
+			TrackCloseSeconds:            4,
+			TrackIOUThreshold:            0.3,
+			CandidateConfidenceThreshold: 0.45,
+			PersistConfidenceThreshold:   0.55,
+			MaxQueueInflight:             8,
 		},
 		Upload: config.UploadConfig{
 			ImageDir:  "./test_uploads/images",

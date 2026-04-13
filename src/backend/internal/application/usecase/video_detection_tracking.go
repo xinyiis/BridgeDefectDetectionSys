@@ -66,6 +66,7 @@ func (uc *VideoDetectionUseCase) upsertTrack(
 ) (*activeDefectTrack, bool) {
 	var bestTrack *activeDefectTrack
 	bestScore := 0.0
+	maxWindowFrames := uc.trackWindowFrames(task.FPS)
 
 	for _, track := range tracks {
 		if track.Status == trackClosed {
@@ -74,11 +75,11 @@ func (uc *VideoDetectionUseCase) upsertTrack(
 		if track.DefectType != current.DefectType {
 			continue
 		}
-		if frameNo-track.LastSeenFrame > 3 {
+		if frameNo-track.LastSeenFrame > maxWindowFrames {
 			continue
 		}
 
-		score, matched := trackMatchScore(track.LastBBox, current.BBox)
+		score, matched := trackMatchScore(track.LastBBox, current.BBox, uc.videoConfig.TrackIOUThreshold, uc.videoConfig.TrackCenterDistanceThreshold)
 		if matched && score > bestScore {
 			bestScore = score
 			bestTrack = track
@@ -131,7 +132,8 @@ func (uc *VideoDetectionUseCase) upsertTrack(
 	return bestTrack, becameBest
 }
 
-func (uc *VideoDetectionUseCase) closeMissedTracks(tracks []*activeDefectTrack, matchedTrackIDs map[string]struct{}) {
+func (uc *VideoDetectionUseCase) closeMissedTracks(task *model.VideoAnalysisTask, tracks []*activeDefectTrack, matchedTrackIDs map[string]struct{}, currentFrameNo int) {
+	closeWindowFrames := uc.trackCloseFrames(task.FPS)
 	for _, track := range tracks {
 		if track.Status == trackClosed {
 			continue
@@ -141,21 +143,21 @@ func (uc *VideoDetectionUseCase) closeMissedTracks(tracks []*activeDefectTrack, 
 		}
 
 		track.Misses++
-		if track.Misses > 3 {
+		if currentFrameNo-track.LastSeenFrame >= closeWindowFrames {
 			track.Status = trackClosed
 		}
 	}
 }
 
 func (uc *VideoDetectionUseCase) shouldConfirmTrack(track *activeDefectTrack) bool {
-	return track.Hits >= 3 && track.AvgConfidence >= 0.7
+	return track.Hits >= uc.videoConfig.ConfirmHits && track.AvgConfidence >= uc.videoConfig.PersistConfidenceThreshold
 }
 
-func trackMatchScore(previous dto.VideoBBox, current dto.VideoBBox) (float64, bool) {
+func trackMatchScore(previous dto.VideoBBox, current dto.VideoBBox, iouThreshold float64, centerDistanceThreshold float64) (float64, bool) {
 	iou := bboxIOU(previous, current)
 	centerDistance := normalizedCenterDistance(previous, current)
 
-	if iou > 0.30 || centerDistance < 0.08 {
+	if iou >= iouThreshold || centerDistance < centerDistanceThreshold {
 		centerSimilarity := math.Max(0, 1-centerDistance)
 		return math.Max(iou, centerSimilarity), true
 	}
@@ -221,4 +223,20 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (uc *VideoDetectionUseCase) trackWindowFrames(fps float64) int {
+	frames := int(math.Round(float64(uc.videoConfig.TrackWindowSeconds) * fps))
+	if frames < 1 {
+		return 1
+	}
+	return frames
+}
+
+func (uc *VideoDetectionUseCase) trackCloseFrames(fps float64) int {
+	frames := int(math.Round(float64(uc.videoConfig.TrackCloseSeconds) * fps))
+	if frames < 1 {
+		return 1
+	}
+	return frames
 }

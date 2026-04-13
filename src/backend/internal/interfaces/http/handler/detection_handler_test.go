@@ -38,6 +38,12 @@ func setupDetectionTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to connect to test database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get sql db: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	// 自动迁移表结构
 	err = db.AutoMigrate(&model.User{}, &model.Bridge{}, &model.Defect{})

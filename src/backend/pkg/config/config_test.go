@@ -23,6 +23,33 @@ func TestValidateConfigDefaultsPersistenceWorkers(t *testing.T) {
 	if cfg.Detection.PersistenceWorkers != 2 {
 		t.Fatalf("expected default persistence_workers=2, got %d", cfg.Detection.PersistenceWorkers)
 	}
+	if cfg.VideoDetection.SampleFPS != 1 {
+		t.Fatalf("expected default sample_fps=1, got %v", cfg.VideoDetection.SampleFPS)
+	}
+	if cfg.VideoDetection.TrackWindowSeconds != 3 {
+		t.Fatalf("expected default track_window_seconds=3, got %d", cfg.VideoDetection.TrackWindowSeconds)
+	}
+	if cfg.VideoDetection.TrackCloseSeconds != 4 {
+		t.Fatalf("expected default track_close_seconds=4, got %d", cfg.VideoDetection.TrackCloseSeconds)
+	}
+	if cfg.VideoDetection.TrackIOUThreshold != 0.3 {
+		t.Fatalf("expected default track_iou_threshold=0.3, got %v", cfg.VideoDetection.TrackIOUThreshold)
+	}
+	if cfg.VideoDetection.TrackCenterDistanceThreshold != 0.08 {
+		t.Fatalf("expected default track_center_distance_threshold=0.08, got %v", cfg.VideoDetection.TrackCenterDistanceThreshold)
+	}
+	if cfg.VideoDetection.ConfirmHits != 3 {
+		t.Fatalf("expected default confirm_hits=3, got %d", cfg.VideoDetection.ConfirmHits)
+	}
+	if cfg.VideoDetection.CandidateConfidenceThreshold != 0.45 {
+		t.Fatalf("expected default candidate_confidence_threshold=0.45, got %v", cfg.VideoDetection.CandidateConfidenceThreshold)
+	}
+	if cfg.VideoDetection.PersistConfidenceThreshold != 0.55 {
+		t.Fatalf("expected default persist_confidence_threshold=0.55, got %v", cfg.VideoDetection.PersistConfidenceThreshold)
+	}
+	if cfg.VideoDetection.MaxQueueInflight != 8 {
+		t.Fatalf("expected default max_queue_inflight=8, got %d", cfg.VideoDetection.MaxQueueInflight)
+	}
 }
 
 func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
@@ -40,6 +67,17 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 		Detection: DetectionConfig{
 			PersistenceWorkers: 4,
 		},
+		VideoDetection: VideoDetectionConfig{
+			SampleFPS:                    2,
+			TrackWindowSeconds:           5,
+			TrackCloseSeconds:            6,
+			TrackIOUThreshold:            0.5,
+			TrackCenterDistanceThreshold: 0.1,
+			ConfirmHits:                  4,
+			CandidateConfidenceThreshold: 0.6,
+			PersistConfidenceThreshold:   0.7,
+			MaxQueueInflight:             12,
+		},
 	}
 
 	if err := validateConfig(cfg); err != nil {
@@ -48,5 +86,32 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 
 	if cfg.Detection.PersistenceWorkers != 4 {
 		t.Fatalf("expected persistence_workers to stay 4, got %d", cfg.Detection.PersistenceWorkers)
+	}
+	if cfg.VideoDetection.SampleFPS != 2 {
+		t.Fatalf("expected sample_fps to stay 2, got %v", cfg.VideoDetection.SampleFPS)
+	}
+	if cfg.VideoDetection.TrackWindowSeconds != 5 {
+		t.Fatalf("expected track_window_seconds to stay 5, got %d", cfg.VideoDetection.TrackWindowSeconds)
+	}
+	if cfg.VideoDetection.TrackCloseSeconds != 6 {
+		t.Fatalf("expected track_close_seconds to stay 6, got %d", cfg.VideoDetection.TrackCloseSeconds)
+	}
+	if cfg.VideoDetection.TrackIOUThreshold != 0.5 {
+		t.Fatalf("expected track_iou_threshold to stay 0.5, got %v", cfg.VideoDetection.TrackIOUThreshold)
+	}
+	if cfg.VideoDetection.TrackCenterDistanceThreshold != 0.1 {
+		t.Fatalf("expected track_center_distance_threshold to stay 0.1, got %v", cfg.VideoDetection.TrackCenterDistanceThreshold)
+	}
+	if cfg.VideoDetection.ConfirmHits != 4 {
+		t.Fatalf("expected confirm_hits to stay 4, got %d", cfg.VideoDetection.ConfirmHits)
+	}
+	if cfg.VideoDetection.CandidateConfidenceThreshold != 0.6 {
+		t.Fatalf("expected candidate_confidence_threshold to stay 0.6, got %v", cfg.VideoDetection.CandidateConfidenceThreshold)
+	}
+	if cfg.VideoDetection.PersistConfidenceThreshold != 0.7 {
+		t.Fatalf("expected persist_confidence_threshold to stay 0.7, got %v", cfg.VideoDetection.PersistConfidenceThreshold)
+	}
+	if cfg.VideoDetection.MaxQueueInflight != 12 {
+		t.Fatalf("expected max_queue_inflight to stay 12, got %d", cfg.VideoDetection.MaxQueueInflight)
 	}
 }

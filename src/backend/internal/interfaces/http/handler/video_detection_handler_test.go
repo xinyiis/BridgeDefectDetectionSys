@@ -130,6 +130,7 @@ func setupVideoTaskRouterWithDeps(db *gorm.DB, extractor interface {
 	bridgeRepo := persistence.NewBridgeRepository(db)
 	defectRepo := persistence.NewDefectRepository(db)
 	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
 	observationRepo := persistence.NewDefectObservationRepository(db)
 	fileService := persistence.NewLocalFileStorage("./test_uploads")
 
@@ -145,12 +146,14 @@ func setupVideoTaskRouterWithDeps(db *gorm.DB, extractor interface {
 		fileService,
 		extractor,
 		taskRepo,
+		frameTaskRepo,
 		observationRepo,
 	)
 
 	authHandler := handler.NewAuthHandler(authUseCase)
 	videoHandler := handler.NewVideoDetectionHandler(videoUseCase)
 	videoStreamHandler := handler.NewVideoStreamHandler(videoUseCase)
+	videoCallbackHandler := handler.NewVideoCallbackHandler(videoUseCase)
 
 	api := r.Group("/api/v1")
 	api.POST("/auth/login", authHandler.Login)
@@ -164,6 +167,15 @@ func setupVideoTaskRouterWithDeps(db *gorm.DB, extractor interface {
 		detection.GET("/video/:task_id", videoHandler.GetTask)
 		detection.POST("/video/:task_id/cancel", videoHandler.CancelTask)
 		detection.GET("/video/ws", videoStreamHandler.Stream)
+	}
+
+	callback := api.Group("/detection/video/callback")
+	{
+		callback.POST("/task-queued", videoCallbackHandler.TaskQueued)
+		callback.POST("/task-started", videoCallbackHandler.TaskStarted)
+		callback.POST("/frame-result", videoCallbackHandler.FrameResult)
+		callback.POST("/task-completed", videoCallbackHandler.TaskCompleted)
+		callback.POST("/task-failed", videoCallbackHandler.TaskFailed)
 	}
 
 	return r
@@ -223,7 +235,7 @@ func cookiesToHeader(cookies []*http.Cookie) string {
 
 func TestVideoTaskLifecycleHandlers(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}); err != nil {
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
 		t.Fatalf("migrate video models failed: %v", err)
 	}
 
@@ -339,7 +351,7 @@ func TestVideoTaskLifecycleHandlers(t *testing.T) {
 
 func TestUploadVideoRejectsInvalidExtension(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}); err != nil {
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
 		t.Fatalf("migrate video models failed: %v", err)
 	}
 
@@ -376,9 +388,60 @@ func TestUploadVideoRejectsInvalidExtension(t *testing.T) {
 	}
 }
 
+func TestUploadVideoRejectsEnableSegment(t *testing.T) {
+	db := setupDetectionTestDB(t)
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
+		t.Fatalf("migrate video models failed: %v", err)
+	}
+
+	router := setupVideoTaskRouter(db)
+	defer cleanupTestFiles()
+
+	user := createDetectionTestUser(db, "video_enable_segment_user", "user")
+	bridge := createDetectionTestBridge(db, user.ID, "视频桥梁")
+	cookies := loginDetectionTest(t, router, "video_enable_segment_user", "123456")
+
+	videoPath := createTestVideoFile(t)
+	defer os.Remove(videoPath)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	file, err := os.Open(videoPath)
+	if err != nil {
+		t.Fatalf("open video failed: %v", err)
+	}
+	defer file.Close()
+
+	part, err := writer.CreateFormFile("video", "test_video.mp4")
+	if err != nil {
+		t.Fatalf("create form file failed: %v", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		t.Fatalf("copy video failed: %v", err)
+	}
+	_ = writer.WriteField("bridge_id", fmt.Sprintf("%d", bridge.ID))
+	_ = writer.WriteField("pixel_ratio", "0.01")
+	_ = writer.WriteField("enable_segment", "true")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v1/detection/video/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestVideoUserFlowE2E_WithSyntheticVideoAndWebSocket(t *testing.T) {
 	db := setupDetectionTestDB(t)
-	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}); err != nil {
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
 		t.Fatalf("migrate video models failed: %v", err)
 	}
 
@@ -539,5 +602,239 @@ func TestVideoUserFlowE2E_WithSyntheticVideoAndWebSocket(t *testing.T) {
 	}
 	if observationCount != 3 {
 		t.Fatalf("expected 3 observations, got %d", observationCount)
+	}
+}
+
+func TestVideoCallbackFrameResultPersistsObservation(t *testing.T) {
+	db := setupDetectionTestDB(t)
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
+		t.Fatalf("migrate video callback models failed: %v", err)
+	}
+
+	router := setupVideoTaskRouter(db)
+	defer cleanupTestFiles()
+
+	user := createDetectionTestUser(db, "video_callback_user", "user")
+	bridge := createDetectionTestBridge(db, user.ID, "回调桥梁")
+	task := &model.VideoAnalysisTask{
+		TaskID:      "video_task_callback_001",
+		UserID:      user.ID,
+		BridgeID:    bridge.ID,
+		VideoPath:   "videos/callback.mp4",
+		FPS:         1,
+		ModelName:   "baseline",
+		PixelRatio:  0.01,
+		Status:      model.VideoTaskDispatching,
+		TotalFrames: 3,
+	}
+	if err := db.Create(task).Error; err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	frameDir := t.TempDir()
+	framePath := createJPEGFrame(t, frameDir, "frame_045.jpg")
+
+	payload := map[string]any{
+		"request_id":       "frame_req_45",
+		"task_id":          task.TaskID,
+		"frame_no":         45,
+		"timestamp_ms":     45000,
+		"status":           "success",
+		"queue_latency_ms": 180,
+		"detect_total_ms":  1500,
+		"decode_ms":        120,
+		"infer_ms":         1080,
+		"postprocess_ms":   300,
+		"frame_ref":        "file://" + framePath,
+		"yolo_bboxes": []map[string]any{
+			{
+				"box_id":      0,
+				"class_idx":   0,
+				"class_name":  "Crack",
+				"yolo_coords": []float64{0.5, 0.5, 0.2, 0.2},
+				"confidence":  0.91,
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal callback payload failed: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v1/detection/video/callback/frame-result", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected callback 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var refreshedTask model.VideoAnalysisTask
+	if err := db.Where("task_id = ?", task.TaskID).First(&refreshedTask).Error; err != nil {
+		t.Fatalf("reload task failed: %v", err)
+	}
+	if refreshedTask.Status != model.VideoTaskProcessing {
+		t.Fatalf("expected processing status, got %s", refreshedTask.Status)
+	}
+	if refreshedTask.ProcessedFrames != 1 {
+		t.Fatalf("expected processed_frames=1, got %d", refreshedTask.ProcessedFrames)
+	}
+
+	var frameTask model.VideoFrameTaskRequest
+	if err := db.Where("request_id = ?", "frame_req_45").First(&frameTask).Error; err != nil {
+		t.Fatalf("load frame task failed: %v", err)
+	}
+	if frameTask.Status != model.VideoFrameTaskCompleted {
+		t.Fatalf("expected completed frame task, got %s", frameTask.Status)
+	}
+
+	var observations []model.DefectObservation
+	if err := db.Where("task_id = ?", task.TaskID).Find(&observations).Error; err != nil {
+		t.Fatalf("load observations failed: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("expected 1 observation, got %d", len(observations))
+	}
+	if observations[0].TrackID == "" {
+		t.Fatalf("expected observation track_id to be populated")
+	}
+}
+
+func TestVideoCallbackTaskCompletedFinalizesOpenTracks(t *testing.T) {
+	db := setupDetectionTestDB(t)
+	if err := db.AutoMigrate(&model.VideoAnalysisTask{}, &model.DefectObservation{}, &model.VideoFrameTaskRequest{}); err != nil {
+		t.Fatalf("migrate video callback models failed: %v", err)
+	}
+
+	router := setupVideoTaskRouter(db)
+	defer cleanupTestFiles()
+
+	user := createDetectionTestUser(db, "video_callback_complete_user", "user")
+	bridge := createDetectionTestBridge(db, user.ID, "完成回调桥梁")
+	task := &model.VideoAnalysisTask{
+		TaskID:      "video_task_callback_complete",
+		UserID:      user.ID,
+		BridgeID:    bridge.ID,
+		VideoPath:   "videos/callback_complete.mp4",
+		FPS:         1,
+		ModelName:   "baseline",
+		PixelRatio:  0.01,
+		Status:      model.VideoTaskDispatching,
+		TotalFrames: 3,
+	}
+	if err := db.Create(task).Error; err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	frameDir := t.TempDir()
+	framePath1 := createJPEGFrame(t, frameDir, "frame_001.jpg")
+	framePath2 := createJPEGFrame(t, frameDir, "frame_002.jpg")
+	framePath3 := createJPEGFrame(t, frameDir, "frame_003.jpg")
+
+	callbacks := []map[string]any{
+		{
+			"request_id":       "frame_req_complete_1",
+			"task_id":          task.TaskID,
+			"frame_no":         1,
+			"timestamp_ms":     0,
+			"status":           "success",
+			"queue_latency_ms": 10,
+			"detect_total_ms":  100,
+			"frame_ref":        "file://" + framePath1,
+			"yolo_bboxes": []map[string]any{{
+				"box_id":      0,
+				"class_idx":   0,
+				"class_name":  "Crack",
+				"yolo_coords": []float64{0.5, 0.5, 0.2, 0.2},
+				"confidence":  0.9,
+			}},
+		},
+		{
+			"request_id":       "frame_req_complete_2",
+			"task_id":          task.TaskID,
+			"frame_no":         2,
+			"timestamp_ms":     1000,
+			"status":           "success",
+			"queue_latency_ms": 10,
+			"detect_total_ms":  100,
+			"frame_ref":        "file://" + framePath2,
+			"yolo_bboxes": []map[string]any{{
+				"box_id":      0,
+				"class_idx":   0,
+				"class_name":  "Crack",
+				"yolo_coords": []float64{0.5, 0.5, 0.2, 0.2},
+				"confidence":  0.9,
+			}},
+		},
+		{
+			"request_id":       "frame_req_complete_3",
+			"task_id":          task.TaskID,
+			"frame_no":         3,
+			"timestamp_ms":     2000,
+			"status":           "success",
+			"queue_latency_ms": 10,
+			"detect_total_ms":  100,
+			"frame_ref":        "file://" + framePath3,
+			"yolo_bboxes": []map[string]any{{
+				"box_id":      0,
+				"class_idx":   0,
+				"class_name":  "Crack",
+				"yolo_coords": []float64{0.5, 0.5, 0.2, 0.2},
+				"confidence":  0.9,
+			}},
+		},
+	}
+
+	for _, payload := range callbacks {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal frame callback payload failed: %v", err)
+		}
+		req := httptest.NewRequest("POST", "/api/v1/detection/video/callback/frame-result", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected frame callback 200, got %d: %s", w.Code, w.Body.String())
+		}
+	}
+
+	completedBody, err := json.Marshal(map[string]any{
+		"task_id":          task.TaskID,
+		"status":           "completed",
+		"total_frames":     3,
+		"processed_frames": 3,
+		"failed_frames":    0,
+	})
+	if err != nil {
+		t.Fatalf("marshal completed payload failed: %v", err)
+	}
+
+	completedReq := httptest.NewRequest("POST", "/api/v1/detection/video/callback/task-completed", bytes.NewReader(completedBody))
+	completedReq.Header.Set("Content-Type", "application/json")
+	completedW := httptest.NewRecorder()
+	router.ServeHTTP(completedW, completedReq)
+	if completedW.Code != http.StatusOK {
+		t.Fatalf("expected task completed callback 200, got %d: %s", completedW.Code, completedW.Body.String())
+	}
+
+	var refreshedTask model.VideoAnalysisTask
+	if err := db.Where("task_id = ?", task.TaskID).First(&refreshedTask).Error; err != nil {
+		t.Fatalf("reload task failed: %v", err)
+	}
+	if refreshedTask.Status != model.VideoTaskCompleted {
+		t.Fatalf("expected completed status, got %s", refreshedTask.Status)
+	}
+	if refreshedTask.ConfirmedDefects != 1 {
+		t.Fatalf("expected 1 confirmed defect, got %d", refreshedTask.ConfirmedDefects)
+	}
+
+	var defectCount int64
+	if err := db.Model(&model.Defect{}).Count(&defectCount).Error; err != nil {
+		t.Fatalf("count defects failed: %v", err)
+	}
+	if defectCount != 1 {
+		t.Fatalf("expected 1 persisted defect, got %d", defectCount)
 	}
 }
