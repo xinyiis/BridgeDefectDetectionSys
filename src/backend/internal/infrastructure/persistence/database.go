@@ -88,6 +88,7 @@ func AutoMigrate(db *gorm.DB) {
 		&model.Bridge{},
 		&model.Drone{},
 		&model.Defect{},
+		&model.Report{},
 		&model.VideoAnalysisTask{},
 		&model.DefectObservation{},
 	}
