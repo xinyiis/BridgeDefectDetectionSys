@@ -34,6 +34,15 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+elif [ "$(id -u)" -eq 0 ]; then
+    SUDO=""
+else
+    print_error "当前用户不是 root，且系统未安装 sudo"
+    exit 1
+fi
+
 # 显示帮助
 show_help() {
     echo "Linux虚拟机开发环境 - 基础工具配置脚本"
@@ -203,7 +212,7 @@ check_all_tools() {
 # 更新包管理器
 update_system() {
     print_info "更新包管理器..."
-    sudo apt-get update -y
+    ${SUDO} apt-get update -y
     print_success "包管理器更新完成"
 }
 
@@ -222,7 +231,7 @@ install_editors() {
     fi
 
     if [ -n "$packages" ]; then
-        sudo apt-get install -y $packages
+        ${SUDO} apt-get install -y $packages
         print_success "编辑器工具安装完成"
     else
         print_success "编辑器工具已全部安装，跳过"
@@ -248,7 +257,7 @@ install_dev_tools() {
     fi
 
     if [ -n "$packages" ]; then
-        sudo apt-get install -y $packages
+        ${SUDO} apt-get install -y $packages
         print_success "开发工具安装完成"
     else
         print_success "开发工具已全部安装，跳过"
@@ -278,12 +287,12 @@ install_network_tools() {
     fi
 
     if [ -n "$packages" ]; then
-        sudo apt-get install -y $packages
+        ${SUDO} apt-get install -y $packages
 
         # 启动SSH服务
         if echo "$packages" | grep -q "openssh-server"; then
-            sudo systemctl start ssh
-            sudo systemctl enable ssh
+            ${SUDO} systemctl start ssh
+            ${SUDO} systemctl enable ssh
             print_info "SSH服务已启动并设置为开机自启"
         fi
 
@@ -324,7 +333,7 @@ install_system_tools() {
     fi
 
     if [ -n "$packages" ]; then
-        sudo apt-get install -y $packages
+        ${SUDO} apt-get install -y $packages
         print_success "系统工具安装完成"
     else
         print_success "系统工具已全部安装，跳过"

@@ -34,6 +34,15 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+elif [ "$(id -u)" -eq 0 ]; then
+    SUDO=""
+else
+    print_error "当前用户不是 root，且系统未安装 sudo"
+    exit 1
+fi
+
 # 显示帮助
 show_help() {
     echo "桥梁病害检测系统 - 后端环境配置脚本"
@@ -152,7 +161,7 @@ clean_old_installations() {
     # 清理Go
     if [ "$go_installed" = true ]; then
         print_info "清理旧版本Go..."
-        sudo rm -rf /usr/local/go
+        ${SUDO} rm -rf /usr/local/go
 
         if [ -f ~/.bashrc ]; then
             cp ~/.bashrc ~/.bashrc.backup.$(date +%Y%m%d%H%M%S)
@@ -180,11 +189,11 @@ clean_old_installations() {
 
         if [ "$confirm_mysql" = "yes" ]; then
             print_info "清理MySQL..."
-            sudo systemctl stop mysql &> /dev/null || true
-            sudo apt-get remove --purge -y mysql-server mysql-client mysql-common
-            sudo apt-get autoremove -y
-            sudo apt-get autoclean
-            sudo rm -rf /etc/mysql /var/lib/mysql
+            ${SUDO} systemctl stop mysql &> /dev/null || true
+            ${SUDO} apt-get remove --purge -y mysql-server mysql-client mysql-common
+            ${SUDO} apt-get autoremove -y
+            ${SUDO} apt-get autoclean
+            ${SUDO} rm -rf /etc/mysql /var/lib/mysql
             print_success "MySQL清理完成"
         else
             print_warning "跳过MySQL清理"
@@ -215,7 +224,7 @@ uninstall_all() {
 
     # 卸载Go
     print_info "卸载Go..."
-    sudo rm -rf /usr/local/go
+    ${SUDO} rm -rf /usr/local/go
     rm -rf "$HOME/go"
     if [ -f ~/.bashrc ]; then
         cp ~/.bashrc ~/.bashrc.backup.$(date +%Y%m%d%H%M%S)
@@ -227,11 +236,11 @@ uninstall_all() {
 
     # 卸载MySQL
     print_info "卸载MySQL..."
-    sudo systemctl stop mysql &> /dev/null || true
-    sudo apt-get remove --purge -y mysql-server mysql-client mysql-common
-    sudo apt-get autoremove -y
-    sudo apt-get autoclean
-    sudo rm -rf /etc/mysql /var/lib/mysql
+    ${SUDO} systemctl stop mysql &> /dev/null || true
+    ${SUDO} apt-get remove --purge -y mysql-server mysql-client mysql-common
+    ${SUDO} apt-get autoremove -y
+    ${SUDO} apt-get autoclean
+    ${SUDO} rm -rf /etc/mysql /var/lib/mysql
     print_success "MySQL已卸载"
 
     # 清理PDF相关文件
@@ -261,19 +270,19 @@ uninstall_all() {
 # 更新包管理器
 update_system() {
     print_info "更新包管理器..."
-    sudo apt-get update -y
+    ${SUDO} apt-get update -y
     print_success "包管理器更新完成"
 }
 
 # 安装基础依赖
 install_dependencies() {
     print_info "安装基础依赖..."
-    sudo apt-get install -y wget curl git build-essential xz-utils
+    ${SUDO} apt-get install -y wget curl git build-essential xz-utils
 
     # SSH 隧道自动化工具（用于连接远程算法服务器）
     if ! command -v sshpass &> /dev/null; then
         print_info "安装 sshpass（SSH 隧道自动化）..."
-        sudo apt-get install -y sshpass
+        ${SUDO} apt-get install -y sshpass
     else
         print_success "sshpass 已安装，跳过"
     fi
@@ -310,11 +319,11 @@ install_go() {
     fi
 
     # 删除旧版本
-    sudo rm -rf /usr/local/go
+    ${SUDO} rm -rf /usr/local/go
 
     # 解压安装
     print_info "解压Go安装包..."
-    sudo tar -C /usr/local -xzf "$GO_TAR"
+    ${SUDO} tar -C /usr/local -xzf "$GO_TAR"
 
     # 配置环境变量
     if ! grep -q "/usr/local/go/bin" ~/.bashrc; then
@@ -359,7 +368,7 @@ install_mysql() {
 
     # 安装MySQL
     print_info "安装MySQL软件包..."
-    sudo apt-get install -y mysql-server
+    ${SUDO} apt-get install -y mysql-server
 
     print_success "MySQL安装完成"
 }
@@ -375,8 +384,8 @@ configure_mysql() {
     print_info "配置MySQL..."
 
     # 启动MySQL服务
-    sudo systemctl start mysql
-    sudo systemctl enable mysql
+    ${SUDO} systemctl start mysql
+    ${SUDO} systemctl enable mysql
 
     # 等待MySQL完全启动
     print_info "等待MySQL服务启动..."
@@ -390,11 +399,11 @@ configure_mysql() {
         print_success "MySQL已配置，密码为123456"
         MYSQL_CONFIGURED=true
     # 测试2：尝试sudo无密码连接（全新安装）
-    elif sudo mysql -e "SELECT 1;" &> /dev/null; then
+    elif ${SUDO} mysql -e "SELECT 1;" &> /dev/null; then
         print_info "检测到全新MySQL安装，开始配置密码..."
 
         # 修改root密码（Ubuntu的MySQL默认使用auth_socket插件）
-        if sudo mysql <<EOF
+        if ${SUDO} mysql <<EOF
 ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '123456';
 FLUSH PRIVILEGES;
 EOF
@@ -407,7 +416,7 @@ EOF
         fi
     else
         print_error "无法连接到MySQL，请检查MySQL服务状态"
-        print_info "尝试运行: sudo systemctl status mysql"
+        print_info "尝试运行: ${SUDO:-} systemctl status mysql"
         exit 1
     fi
 
