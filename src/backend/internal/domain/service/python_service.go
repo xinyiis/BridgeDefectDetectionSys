@@ -27,6 +27,10 @@ type PythonService interface {
 
 	// Segment 调用实例分割接口。
 	Segment(imagePath string, req *SegmentRequest) (*SegmentResult, error)
+
+	// EnqueueVideoFrameDetect 提交视频单帧异步检测任务。
+	// 该接口只负责入队，实际结果通过回调返回到后端。
+	EnqueueVideoFrameDetect(req *VideoFrameDetectEnqueueRequest) (*VideoFrameDetectEnqueueResponse, error)
 }
 
 // PythonDetectionResult Python检测返回结果
@@ -98,6 +102,28 @@ type SegmentResult struct {
 	Status          string           `json:"status"`
 	FusionImage     string           `json:"fusion_image"`
 	IndividualMasks []IndividualMask `json:"individual_masks"`
+}
+
+// VideoFrameDetectEnqueueRequest 视频单帧异步检测入队请求。
+type VideoFrameDetectEnqueueRequest struct {
+	RequestID       string  `json:"request_id"`
+	TaskID          string  `json:"task_id"`
+	BridgeID        uint    `json:"bridge_id"`
+	FrameNo         int     `json:"frame_no"`
+	TimestampMS     int     `json:"timestamp_ms"`
+	FrameRef        string  `json:"frame_ref"`
+	ModelName       string  `json:"model_name"`
+	Conf            float64 `json:"conf"`
+	CallbackBaseURL string  `json:"callback_base_url"`
+}
+
+// VideoFrameDetectEnqueueResponse 视频单帧异步检测入队响应。
+type VideoFrameDetectEnqueueResponse struct {
+	Status       string `json:"status"`
+	RequestID    string `json:"request_id"`
+	TaskID       string `json:"task_id"`
+	QueuedAt     string `json:"queued_at,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
 }
 
 // IndividualMask 单个分割掩码。

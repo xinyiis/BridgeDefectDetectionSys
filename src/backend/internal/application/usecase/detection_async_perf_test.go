@@ -63,6 +63,10 @@ func (s *perfPythonServiceStub) Segment(string, *service.SegmentRequest) (*servi
 	return nil, nil
 }
 
+func (s *perfPythonServiceStub) EnqueueVideoFrameDetect(*service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	return nil, nil
+}
+
 type delayedFileService struct {
 	base             service.FileService
 	saveTempDelay    time.Duration

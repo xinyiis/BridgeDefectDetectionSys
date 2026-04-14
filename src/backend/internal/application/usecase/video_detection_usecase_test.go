@@ -38,7 +38,9 @@ func (s *stubFrameExtractor) ExtractFramesStream(_ string, _ string, _ float64, 
 	return nil
 }
 
-type stubPythonService struct{}
+type stubPythonService struct {
+	onEnqueue func(req *service.VideoFrameDetectEnqueueRequest)
+}
 
 func (s *stubPythonService) DetectDefect(string, string, float64) (*service.PythonDetectionResult, error) {
 	return nil, nil
@@ -67,6 +69,59 @@ func (s *stubPythonService) Preprocess(string, string) (*service.PreprocessResul
 
 func (s *stubPythonService) Segment(string, *service.SegmentRequest) (*service.SegmentResult, error) {
 	return &service.SegmentResult{Status: "success"}, nil
+}
+
+func (s *stubPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	if req == nil {
+		return nil, nil
+	}
+	if s.onEnqueue != nil {
+		s.onEnqueue(req)
+	}
+	return &service.VideoFrameDetectEnqueueResponse{
+		Status:    "accepted",
+		RequestID: req.RequestID,
+		TaskID:    req.TaskID,
+	}, nil
+}
+
+func wireSuccessfulCallbacks(videoUC *usecase.VideoDetectionUseCase, pythonService *stubPythonService) {
+	pythonService.onEnqueue = func(req *service.VideoFrameDetectEnqueueRequest) {
+		go func() {
+			_, _ = videoUC.HandleAlgoTaskQueued(&dto.AlgoVideoTaskQueuedCallbackRequest{
+				TaskID:   req.TaskID,
+				Status:   "queued",
+				QueuedAt: time.Now().UTC().Format(time.RFC3339),
+			})
+			_, _ = videoUC.HandleAlgoTaskStarted(&dto.AlgoVideoTaskStartedCallbackRequest{
+				TaskID:    req.TaskID,
+				Status:    "processing",
+				StartedAt: time.Now().UTC().Format(time.RFC3339),
+			})
+			_, _ = videoUC.HandleAlgoFrameResult(&dto.AlgoVideoFrameResultCallbackRequest{
+				RequestID:      req.RequestID,
+				TaskID:         req.TaskID,
+				FrameNo:        req.FrameNo,
+				TimestampMS:    req.TimestampMS,
+				Status:         "success",
+				QueueLatencyMS: 10,
+				DetectTotalMS:  100,
+				DecodeMS:       10,
+				InferMS:        70,
+				PostprocessMS:  20,
+				FrameRef:       req.FrameRef,
+				YOLOBBoxes: []dto.AlgoVideoBBox{
+					{
+						BoxID:      1,
+						ClassIdx:   0,
+						ClassName:  "Crack",
+						YOLOCoords: [4]float64{0.5, 0.5, 0.3, 0.1},
+						Confidence: 0.92,
+					},
+				},
+			})
+		}()
+	}
 }
 
 func setupVideoUseCaseTestDB(t *testing.T) *gorm.DB {
@@ -190,16 +245,18 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 		createJPEGFrame(t, tempDir, "frame_003.jpg"),
 	}
 
+	pythonService := &stubPythonService{}
 	videoUC := usecase.NewVideoDetectionUseCase(
 		defectService,
 		bridgeService,
-		&stubPythonService{},
+		pythonService,
 		fileService,
 		&stubFrameExtractor{frames: frames},
 		taskRepo,
 		frameTaskRepo,
 		observationRepo,
 	)
+	wireSuccessfulCallbacks(videoUC, pythonService)
 
 	now := time.Now()
 	task := &model.VideoAnalysisTask{
@@ -383,10 +440,11 @@ func TestVideoDetectionUseCase_HonorsCandidateConfidenceThreshold(t *testing.T) 
 		createJPEGFrame(t, tempDir, "frame_003.jpg"),
 	}
 
+	pythonService := &stubPythonService{}
 	videoUC := usecase.NewVideoDetectionUseCaseWithConfig(
 		defectService,
 		bridgeService,
-		&stubPythonService{},
+		pythonService,
 		fileService,
 		&stubFrameExtractor{frames: frames},
 		taskRepo,
@@ -401,8 +459,11 @@ func TestVideoDetectionUseCase_HonorsCandidateConfidenceThreshold(t *testing.T) 
 			CandidateConfidenceThreshold: 0.95,
 			PersistConfidenceThreshold:   0.55,
 			MaxQueueInflight:             4,
+			QueuedTimeoutSeconds:         1,
+			ProgressIdleTimeoutSeconds:   1,
 		},
 	)
+	wireSuccessfulCallbacks(videoUC, pythonService)
 
 	task := &model.VideoAnalysisTask{
 		TaskID:     "video_task_threshold",

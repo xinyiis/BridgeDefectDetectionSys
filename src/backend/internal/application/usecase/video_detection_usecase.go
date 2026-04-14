@@ -44,10 +44,12 @@ type VideoDetectionUseCase struct {
 }
 
 type videoTaskRuntime struct {
-	mu      sync.Mutex
-	send    func(any) error
-	summary map[string]int
-	done    chan struct{}
+	mu       sync.Mutex
+	send     func(any) error
+	summary  map[string]int
+	queuedAt time.Time
+	lastProgressAt time.Time
+	done     chan struct{}
 	doneOnce sync.Once
 }
 
@@ -82,6 +84,9 @@ func NewVideoDetectionUseCase(
 			CandidateConfidenceThreshold: 0.45,
 			PersistConfidenceThreshold:   0.55,
 			MaxQueueInflight:             8,
+			QueuedTimeoutSeconds:         5,
+			ProgressIdleTimeoutSeconds:   15,
+			CallbackBaseURL:              "http://localhost:8080/api/v1/detection/video/callback",
 		},
 	)
 }
@@ -98,6 +103,15 @@ func NewVideoDetectionUseCaseWithConfig(
 	observationRepo repository.DefectObservationRepository,
 	videoConfig appconfig.VideoDetectionConfig,
 ) *VideoDetectionUseCase {
+	if videoConfig.CallbackBaseURL == "" {
+		videoConfig.CallbackBaseURL = "http://localhost:8080/api/v1/detection/video/callback"
+	}
+	if videoConfig.QueuedTimeoutSeconds <= 0 {
+		videoConfig.QueuedTimeoutSeconds = 5
+	}
+	if videoConfig.ProgressIdleTimeoutSeconds <= 0 {
+		videoConfig.ProgressIdleTimeoutSeconds = 15
+	}
 	return &VideoDetectionUseCase{
 		defectService:   defectService,
 		bridgeService:   bridgeService,
@@ -215,13 +229,23 @@ func (uc *VideoDetectionUseCase) HandleAlgoTaskQueued(req *dto.AlgoVideoTaskQueu
 	if task == nil {
 		return nil, errors.New("任务不存在")
 	}
-
-	task.Status = model.VideoTaskQueued
-	task.ErrorMessage = ""
-	if err := uc.taskRepo.Update(task); err != nil {
-		return nil, fmt.Errorf("更新任务入队状态失败: %w", err)
+	if task.Status == model.VideoTaskCompleted || task.Status == model.VideoTaskFailed || task.Status == model.VideoTaskCanceled {
+		return &dto.VideoCallbackAckResponse{
+			TaskID:  task.TaskID,
+			Status:  "duplicate",
+			Message: "task already finished",
+		}, nil
 	}
-	uc.tasks.Store(task.TaskID, task)
+
+	if task.Status != model.VideoTaskQueued {
+		task.Status = model.VideoTaskQueued
+		task.ErrorMessage = ""
+		if err := uc.taskRepo.Update(task); err != nil {
+			return nil, fmt.Errorf("更新任务入队状态失败: %w", err)
+		}
+		uc.tasks.Store(task.TaskID, task)
+	}
+	uc.markRuntimeQueued(task.TaskID, time.Now())
 
 	return &dto.VideoCallbackAckResponse{
 		TaskID:  task.TaskID,
@@ -238,6 +262,13 @@ func (uc *VideoDetectionUseCase) HandleAlgoTaskStarted(req *dto.AlgoVideoTaskSta
 	}
 	if task == nil {
 		return nil, errors.New("任务不存在")
+	}
+	if task.Status == model.VideoTaskCompleted || task.Status == model.VideoTaskFailed || task.Status == model.VideoTaskCanceled {
+		return &dto.VideoCallbackAckResponse{
+			TaskID:  task.TaskID,
+			Status:  "duplicate",
+			Message: "task already finished",
+		}, nil
 	}
 
 	if task.Status != model.VideoTaskProcessing {
@@ -287,6 +318,7 @@ func (uc *VideoDetectionUseCase) HandleAlgoFrameResult(req *dto.AlgoVideoFrameRe
 	}
 
 	if req.Status == "failed" {
+		uc.markRuntimeProgress(task.TaskID, time.Now())
 		now := time.Now()
 		frameTask.Status = model.VideoFrameTaskFailed
 		frameTask.ErrorMessage = req.ErrorMessage
@@ -294,6 +326,31 @@ func (uc *VideoDetectionUseCase) HandleAlgoFrameResult(req *dto.AlgoVideoFrameRe
 		if err := uc.frameTaskRepo.Update(frameTask); err != nil {
 			return nil, fmt.Errorf("更新帧失败状态失败: %w", err)
 		}
+
+		if task.Status != model.VideoTaskFailed && task.Status != model.VideoTaskCompleted && task.Status != model.VideoTaskCanceled {
+			task.Status = model.VideoTaskFailed
+			task.CompletedAt = &now
+			if req.ErrorMessage != "" {
+				task.ErrorMessage = req.ErrorMessage
+			} else {
+				task.ErrorMessage = "算法帧回调失败"
+			}
+			if err := uc.taskRepo.Update(task); err != nil {
+				return nil, fmt.Errorf("更新任务失败状态失败: %w", err)
+			}
+			uc.tasks.Store(task.TaskID, task)
+		}
+
+		if runtime := uc.loadRuntime(task.TaskID); runtime != nil {
+			uc.sendMessage(runtime.send, dto.VideoErrorMessage{
+				Type:      "error",
+				TaskID:    task.TaskID,
+				SessionID: task.SessionID,
+				Message:   task.ErrorMessage,
+			})
+		}
+		uc.completeRuntime(task.TaskID)
+
 		return &dto.VideoCallbackAckResponse{
 			TaskID:    task.TaskID,
 			RequestID: req.RequestID,
@@ -305,18 +362,44 @@ func (uc *VideoDetectionUseCase) HandleAlgoFrameResult(req *dto.AlgoVideoFrameRe
 	runtime := uc.loadRuntime(task.TaskID)
 	if runtime != nil {
 		runtime.mu.Lock()
-		defer runtime.mu.Unlock()
 	}
 	task, err = uc.taskRepo.FindByTaskID(req.TaskID)
 	if err != nil {
+		if runtime != nil {
+			runtime.mu.Unlock()
+		}
 		return nil, err
 	}
 	if task == nil {
+		if runtime != nil {
+			runtime.mu.Unlock()
+		}
 		return nil, errors.New("任务不存在")
 	}
 
 	if err := uc.applyFrameResult(task, req, runtime); err != nil {
+		if runtime != nil {
+			runtime.mu.Unlock()
+		}
 		return nil, err
+	}
+	uc.markRuntimeProgress(task.TaskID, time.Now())
+
+	shouldAutoComplete := task.TotalFrames > 0 && task.ProcessedFrames >= task.TotalFrames && task.Status != model.VideoTaskCompleted
+	if runtime != nil {
+		runtime.mu.Unlock()
+	}
+
+	if shouldAutoComplete {
+		if _, err := uc.HandleAlgoTaskCompleted(&dto.AlgoVideoTaskCompletedCallbackRequest{
+			TaskID:          task.TaskID,
+			Status:          "completed",
+			TotalFrames:     task.TotalFrames,
+			ProcessedFrames: task.ProcessedFrames,
+			FailedFrames:    0,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	return &dto.VideoCallbackAckResponse{
@@ -520,6 +603,7 @@ func (uc *VideoDetectionUseCase) runTask(task *model.VideoAnalysisTask, send fun
 		return fmt.Errorf("更新处理状态失败: %w", err)
 	}
 	uc.tasks.Store(task.TaskID, task)
+	runtime := uc.ensureRuntime(task.TaskID, send)
 
 	tempDir := filepath.Join(uploadsRoot, "video_tasks", task.TaskID, "frames")
 	_ = os.RemoveAll(tempDir)
@@ -549,6 +633,10 @@ func (uc *VideoDetectionUseCase) runTask(task *model.VideoAnalysisTask, send fun
 		return fmt.Errorf("更新任务派发状态失败: %w", err)
 	}
 	uc.tasks.Store(task.TaskID, task)
+
+	if task.TotalFrames > 0 {
+		go uc.monitorTaskProgress(ctx, cancel, task.TaskID, task.SessionID, send)
+	}
 
 	err := uc.frameExtractor.ExtractFramesStream(
 		uc.resolveStoredPath(task.VideoPath),
@@ -585,15 +673,23 @@ func (uc *VideoDetectionUseCase) runTask(task *model.VideoAnalysisTask, send fun
 	wg.Wait()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			if refreshedTask, findErr := uc.taskRepo.FindByTaskID(task.TaskID); findErr == nil && refreshedTask != nil {
+				task = refreshedTask
+			}
 			if task.Status != model.VideoTaskCanceled {
-				canceledAt := time.Now()
-				task.Status = model.VideoTaskCanceled
-				task.CanceledAt = &canceledAt
-				task.ErrorMessage = ""
-				_ = uc.taskRepo.Update(task)
-				uc.tasks.Store(task.TaskID, task)
+				if task.Status != model.VideoTaskFailed && task.Status != model.VideoTaskCompleted {
+					canceledAt := time.Now()
+					task.Status = model.VideoTaskCanceled
+					task.CanceledAt = &canceledAt
+					task.ErrorMessage = ""
+					_ = uc.taskRepo.Update(task)
+					uc.tasks.Store(task.TaskID, task)
+				}
 			}
 			uc.completeRuntime(task.TaskID)
+			if task.Status == model.VideoTaskFailed && task.ErrorMessage != "" {
+				return errors.New(task.ErrorMessage)
+			}
 			return nil
 		}
 
@@ -636,17 +732,48 @@ func (uc *VideoDetectionUseCase) runTask(task *model.VideoAnalysisTask, send fun
 	if refreshedTask != nil {
 		task = refreshedTask
 	}
-	if _, err := uc.HandleAlgoTaskCompleted(&dto.AlgoVideoTaskCompletedCallbackRequest{
-		TaskID:          task.TaskID,
-		Status:          "completed",
-		TotalFrames:     task.TotalFrames,
-		ProcessedFrames: task.ProcessedFrames,
-		FailedFrames:    0,
-	}); err != nil {
-		return err
+
+	if task.TotalFrames == 0 {
+		if _, err := uc.HandleAlgoTaskCompleted(&dto.AlgoVideoTaskCompletedCallbackRequest{
+			TaskID:          task.TaskID,
+			Status:          "completed",
+			TotalFrames:     0,
+			ProcessedFrames: 0,
+			FailedFrames:    0,
+		}); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	return nil
+	runtime = uc.loadRuntime(task.TaskID)
+	if runtime == nil {
+		return errors.New("任务运行时不存在")
+	}
+
+	select {
+	case <-runtime.done:
+	}
+
+	finalTask, err := uc.taskRepo.FindByTaskID(task.TaskID)
+	if err != nil {
+		return err
+	}
+	if finalTask != nil {
+		task = finalTask
+	}
+
+	switch task.Status {
+	case model.VideoTaskCompleted, model.VideoTaskCanceled:
+		return nil
+	case model.VideoTaskFailed:
+		if task.ErrorMessage == "" {
+			return errors.New("视频任务失败")
+		}
+		return errors.New(task.ErrorMessage)
+	default:
+		return fmt.Errorf("任务结束但状态异常: %s", task.Status)
+	}
 }
 
 func (uc *VideoDetectionUseCase) buildConfirmedDefect(task *model.VideoAnalysisTask, track *activeDefectTrack, observedAt time.Time) *model.Defect {
@@ -772,6 +899,28 @@ func (uc *VideoDetectionUseCase) ensureRuntime(taskID string, send func(any) err
 	return runtime
 }
 
+func (uc *VideoDetectionUseCase) markRuntimeQueued(taskID string, at time.Time) {
+	runtime := uc.loadRuntime(taskID)
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	if runtime.queuedAt.IsZero() {
+		runtime.queuedAt = at
+	}
+	runtime.mu.Unlock()
+}
+
+func (uc *VideoDetectionUseCase) markRuntimeProgress(taskID string, at time.Time) {
+	runtime := uc.loadRuntime(taskID)
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	runtime.lastProgressAt = at
+	runtime.mu.Unlock()
+}
+
 func (uc *VideoDetectionUseCase) completeRuntime(taskID string) {
 	runtime := uc.loadRuntime(taskID)
 	if runtime == nil {
@@ -799,7 +948,83 @@ func (uc *VideoDetectionUseCase) registerQueuedFrameTask(task *model.VideoAnalys
 	return nil
 }
 
+func (uc *VideoDetectionUseCase) failTaskWithMessage(taskID, sessionID, message string, send func(any) error) {
+	task, err := uc.taskRepo.FindByTaskID(taskID)
+	if err != nil || task == nil {
+		uc.completeRuntime(taskID)
+		return
+	}
+	if task.Status == model.VideoTaskCompleted || task.Status == model.VideoTaskFailed || task.Status == model.VideoTaskCanceled {
+		uc.completeRuntime(taskID)
+		return
+	}
+
+	now := time.Now()
+	task.Status = model.VideoTaskFailed
+	task.CompletedAt = &now
+	task.ErrorMessage = message
+	if updateErr := uc.taskRepo.Update(task); updateErr == nil {
+		uc.tasks.Store(task.TaskID, task)
+	}
+	uc.sendMessage(send, dto.VideoErrorMessage{
+		Type:      "error",
+		TaskID:    taskID,
+		SessionID: sessionID,
+		Message:   message,
+	})
+	uc.completeRuntime(taskID)
+}
+
+func (uc *VideoDetectionUseCase) monitorTaskProgress(ctx context.Context, cancel context.CancelFunc, taskID, sessionID string, send func(any) error) {
+	runtime := uc.loadRuntime(taskID)
+	if runtime == nil {
+		return
+	}
+
+	queuedDeadline := time.Now().Add(time.Duration(uc.videoConfig.QueuedTimeoutSeconds) * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-runtime.done:
+			return
+		case <-ticker.C:
+			runtime.mu.Lock()
+			queuedAt := runtime.queuedAt
+			lastProgressAt := runtime.lastProgressAt
+			runtime.mu.Unlock()
+
+			now := time.Now()
+			if queuedAt.IsZero() {
+				if !now.Before(queuedDeadline) {
+					uc.failTaskWithMessage(taskID, sessionID, "等待算法 queued 回调超时", send)
+					cancel()
+					return
+				}
+				continue
+			}
+
+			baseline := queuedAt
+			if !lastProgressAt.IsZero() {
+				baseline = lastProgressAt
+			}
+			if now.Sub(baseline) >= time.Duration(uc.videoConfig.ProgressIdleTimeoutSeconds)*time.Second {
+				uc.failTaskWithMessage(taskID, sessionID, "queued 后连续无进度消息超时", send)
+				cancel()
+				return
+			}
+		}
+	}
+}
+
 func (uc *VideoDetectionUseCase) dispatchFrameDetect(ctx context.Context, task *model.VideoAnalysisTask, framePath string, frameNo int, requestID string, timestampMS int) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	frameTask, err := uc.frameTaskRepo.FindByRequestID(requestID)
 	if err != nil {
 		return fmt.Errorf("查询排队帧任务失败: %w", err)
@@ -808,71 +1033,42 @@ func (uc *VideoDetectionUseCase) dispatchFrameDetect(ctx context.Context, task *
 		return fmt.Errorf("排队帧任务不存在: %s", requestID)
 	}
 
-	startedAt := time.Now()
-	frameTask.Status = model.VideoFrameTaskProcessing
-	frameTask.StartedAt = &startedAt
-	if frameTask.QueuedAt != nil {
-		frameTask.QueueLatencyMS = int(startedAt.Sub(*frameTask.QueuedAt).Milliseconds())
+	frameRef := "file://" + framePath
+	if uc.videoConfig.CallbackBaseURL == "" {
+		return errors.New("视频回调基础地址未配置")
 	}
-	if err := uc.frameTaskRepo.Update(frameTask); err != nil {
-		return fmt.Errorf("更新帧任务处理中状态失败: %w", err)
-	}
-
-	if _, err := uc.HandleAlgoTaskStarted(&dto.AlgoVideoTaskStartedCallbackRequest{
-		TaskID: task.TaskID,
-		Status: "processing",
-	}); err != nil {
-		return err
-	}
-
-	detectStartedAt := time.Now()
-	detectResult, err := uc.pythonService.Detect(framePath, &service.DetectRequest{
-		ModelName: task.ModelName,
-		Conf:      0.25,
+	enqueueResp, err := uc.pythonService.EnqueueVideoFrameDetect(&service.VideoFrameDetectEnqueueRequest{
+		RequestID:       requestID,
+		TaskID:          task.TaskID,
+		BridgeID:        task.BridgeID,
+		FrameNo:         frameNo,
+		TimestampMS:     timestampMS,
+		FrameRef:        frameRef,
+		ModelName:       task.ModelName,
+		Conf:            0.25,
+		CallbackBaseURL: uc.videoConfig.CallbackBaseURL,
 	})
-	detectTotalMS := int(time.Since(detectStartedAt).Milliseconds())
 	if err != nil {
-		_, handleErr := uc.HandleAlgoFrameResult(&dto.AlgoVideoFrameResultCallbackRequest{
-			RequestID:      requestID,
-			TaskID:         task.TaskID,
-			FrameNo:        frameNo,
-			TimestampMS:    timestampMS,
-			Status:         "failed",
-			QueueLatencyMS: frameTask.QueueLatencyMS,
-			DetectTotalMS:  detectTotalMS,
-			FrameRef:       "file://" + framePath,
-			ErrorMessage:   err.Error(),
-		})
-		if handleErr != nil {
-			return handleErr
+		now := time.Now()
+		frameTask.Status = model.VideoFrameTaskFailed
+		frameTask.ErrorMessage = err.Error()
+		frameTask.FinishedAt = &now
+		_ = uc.frameTaskRepo.Update(frameTask)
+		return fmt.Errorf("提交算法帧任务失败: %w", err)
+	}
+	if enqueueResp != nil && enqueueResp.Status == "failed" {
+		now := time.Now()
+		frameTask.Status = model.VideoFrameTaskFailed
+		frameTask.ErrorMessage = enqueueResp.ErrorMessage
+		frameTask.FinishedAt = &now
+		_ = uc.frameTaskRepo.Update(frameTask)
+		if enqueueResp.ErrorMessage == "" {
+			return errors.New("算法端拒绝帧任务")
 		}
-		return fmt.Errorf("AI检测失败: %w", err)
+		return errors.New(enqueueResp.ErrorMessage)
 	}
 
-	yoloBBoxes := make([]dto.AlgoVideoBBox, 0, len(detectResult.YOLOBBoxes))
-	for _, bbox := range detectResult.YOLOBBoxes {
-		yoloBBoxes = append(yoloBBoxes, dto.AlgoVideoBBox{
-			BoxID:      bbox.BoxID,
-			ClassIdx:   bbox.ClassIdx,
-			ClassName:  bbox.ClassName,
-			YOLOCoords: bbox.YOLOCoords,
-			Confidence: bbox.Confidence,
-		})
-	}
-
-	_, err = uc.HandleAlgoFrameResult(&dto.AlgoVideoFrameResultCallbackRequest{
-		RequestID:      requestID,
-		TaskID:         task.TaskID,
-		FrameNo:        frameNo,
-		TimestampMS:    timestampMS,
-		Status:         "success",
-		QueueLatencyMS: frameTask.QueueLatencyMS,
-		DetectTotalMS:  detectTotalMS,
-		InferMS:        detectTotalMS,
-		FrameRef:       "file://" + framePath,
-		YOLOBBoxes:     yoloBBoxes,
-	})
-	return err
+	return nil
 }
 
 func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask, req *dto.AlgoVideoFrameResultCallbackRequest, runtime *videoTaskRuntime) error {
@@ -903,7 +1099,7 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 		})
 
 		currentDefect := dto.VideoFrameDefect{
-			DefectType: defectType,
+			DefectType:        defectType,
 			MeasurementSource: "bbox_estimate",
 			MeasurementStatus: "estimated",
 		}

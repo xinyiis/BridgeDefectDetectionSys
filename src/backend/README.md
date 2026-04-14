@@ -116,7 +116,8 @@ database:
 
 # Python 算法服务
 python_service:
-  url: "http://localhost:8000"
+  enabled: true
+  url: "http://localhost:18080"
   timeout: 30
 
 # 文件上传
@@ -184,12 +185,22 @@ cors:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | uint | 主键 |
-| name | varchar(100) | 桥梁名称 |
-| location | varchar(255) | 地理位置 |
-| description | text | 描述 |
+| bridge_name | varchar(100) | 桥梁名称 |
+| bridge_code | varchar(50) | 桥梁编号（唯一） |
+| address | varchar(255) | 详细地址 |
+| longitude | decimal(10,6) | 经度 |
+| latitude | decimal(10,6) | 纬度 |
+| bridge_type | varchar(50) | 桥梁类型 |
+| build_year | int | 建造年份 |
+| length | decimal(10,2) | 长度（米） |
+| width | decimal(10,2) | 宽度（米） |
+| status | varchar(20) | 状态 |
+| model_3d_path | varchar(255) | 3D 模型路径 |
+| remark | text | 备注 |
 | user_id | uint | 所属用户ID |
 | created_at | datetime | 创建时间 |
 | updated_at | datetime | 更新时间 |
+| deleted_at | datetime | 软删除时间 |
 
 ### drones（无人机表）
 

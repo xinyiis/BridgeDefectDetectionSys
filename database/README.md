@@ -2,9 +2,9 @@
 
 ## 📦 文件说明
 
-- **database_export.sql** - 完整数据库导出文件（32KB）
-  - 包含所有表结构
-  - 包含所有数据（24用户、26桥梁、5无人机、51缺陷、10报表）
+- **database_export.sql** - 完整数据库导出文件（约58KB）
+  - 包含所有表结构（7个表）
+  - 包含最新业务数据（24用户、28桥梁、5无人机、91缺陷、10报表等）
   - MySQL 8.0 格式
   - UTF-8MB4 编码
 
@@ -46,10 +46,12 @@ mysql -uroot -p -Dbridge_detection -e "SHOW TABLES; SELECT COUNT(*) FROM users;"
 | 表名 | 数据量 | 说明 |
 |------|--------|------|
 | users | 24条 | 用户账号 |
-| bridges | 26条 | 桥梁信息 |
+| bridges | 28条 | 桥梁信息 |
 | drones | 5条 | 无人机设备 |
-| defects | 51条 | 缺陷检测记录 |
+| defects | 91条 | 缺陷检测记录 |
 | reports | 10条 | 生成的报表 |
+| defect_observations | 0条 | 缺陷观测记录 |
+| video_analysis_tasks | 0条 | 视频分析任务 |
 
 ## ⚙️ 配置更新
 
@@ -111,7 +113,7 @@ sudo bash setup_backend_env.sh
 导入完成后，执行以下检查：
 
 - [ ] 数据库连接成功
-- [ ] 所有表都存在（5个表）
+- [ ] 所有表都存在（7个表）
 - [ ] 数据正确导入（查询几条记录验证）
 - [ ] 后端服务启动成功
 - [ ] 登录功能正常

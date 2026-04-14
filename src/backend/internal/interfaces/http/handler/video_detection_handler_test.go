@@ -81,6 +81,17 @@ func (s *stubPythonService) Segment(string, *service.SegmentRequest) (*service.S
 	return &service.SegmentResult{Status: "success"}, nil
 }
 
+func (s *stubPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	if req == nil {
+		return nil, nil
+	}
+	return &service.VideoFrameDetectEnqueueResponse{
+		Status:    "accepted",
+		RequestID: req.RequestID,
+		TaskID:    req.TaskID,
+	}, nil
+}
+
 type streamingPythonService struct{}
 
 func (s *streamingPythonService) DetectDefect(string, string, float64) (*service.PythonDetectionResult, error) {
@@ -110,6 +121,17 @@ func (s *streamingPythonService) Preprocess(string, string) (*service.Preprocess
 
 func (s *streamingPythonService) Segment(string, *service.SegmentRequest) (*service.SegmentResult, error) {
 	return &service.SegmentResult{Status: "success"}, nil
+}
+
+func (s *streamingPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	if req == nil {
+		return nil, nil
+	}
+	return &service.VideoFrameDetectEnqueueResponse{
+		Status:    "accepted",
+		RequestID: req.RequestID,
+		TaskID:    req.TaskID,
+	}, nil
 }
 
 func setupVideoTaskRouter(db *gorm.DB) *gin.Engine {
@@ -171,6 +193,8 @@ func setupVideoTaskRouterWithDeps(db *gorm.DB, extractor interface {
 
 	callback := api.Group("/detection/video/callback")
 	{
+		callback.POST("/frame-queued", videoCallbackHandler.TaskQueued)
+		callback.POST("/frame-started", videoCallbackHandler.TaskStarted)
 		callback.POST("/task-queued", videoCallbackHandler.TaskQueued)
 		callback.POST("/task-started", videoCallbackHandler.TaskStarted)
 		callback.POST("/frame-result", videoCallbackHandler.FrameResult)

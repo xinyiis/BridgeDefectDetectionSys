@@ -1,0 +1,97 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Video Async Detection Architecture Tour",
+  "description": "架构视角导览：视频异步检测链路、回调协议、状态机与数据落库路径。",
+  "ref": "main",
+  "steps": [
+    {
+      "directory": "src/backend/internal",
+      "title": "系统入口视角",
+      "description": "先从后端内部模块开始。执行编排在 `application/usecase`，协议在 `application/dto` 与 `domain/service`，HTTP 接入在 `interfaces/http`。这条链路的关键是：后端负责视频任务编排，算法负责帧级异步回调，双方通过固定契约对齐。"
+    },
+    {
+      "file": "doc/设计变更_视频算法异步对接方案.md",
+      "line": 308,
+      "title": "契约基线与时序图",
+      "description": "这里定义了帧级异步契约（`/algo/video/frames/detect` + `frame-queued/frame-started/frame-result`）。这是实现判断“对齐/不对齐”的唯一基线。\\n\\n```mermaid\\nsequenceDiagram\\n  autonumber\\n  participant FE as Frontend\\n  participant BE as Backend\\n  participant ALGO as Algorithm\\n  participant DB as MySQL\\n\\n  FE->>BE: 上传视频 + 启动任务\\n  BE->>BE: 抽帧/并发派发\\n  loop 每帧\\n    BE->>ALGO: POST /algo/video/frames/detect\\n    ALGO-->>BE: frame-queued\\n    ALGO-->>BE: frame-started\\n    ALGO-->>BE: frame-result(success/failed)\\n    BE->>DB: 更新帧状态/写观测\\n    BE-->>FE: WS progress/frame\\n  end\\n  ALGO-->>BE: task-completed | task-failed\\n  BE->>DB: 更新任务终态\\n```"
+    },
+    {
+      "file": "main.py",
+      "line": 64,
+      "title": "算法侧任务模型",
+      "description": "`VideoFrameDetectRequest` 定义帧级请求字段，`AsyncTask` 和 `task_queue` 是算法端异步处理核心。关键点：算法入口只做校验与入队，不在入口里同步推理，避免阻塞后端派发线程。"
+    },
+    {
+      "file": "main.py",
+      "line": 372,
+      "title": "算法侧帧级入口",
+      "description": "`api_video_frame_detect` 负责读取 `frame_ref`、入队 `video_frame_detect`，并立即返回 `accepted`。同时回调 `frame-queued`。这一步把“接收请求”和“执行推理”拆开，是异步架构成立的第一条件。"
+    },
+    {
+      "file": "main.py",
+      "line": 101,
+      "title": "算法侧 Worker 回调阶段",
+      "description": "`algo_worker` 处理 `video_frame_detect` 时会发送 `frame-started`，完成后发送 `frame-result`。这使后端可以按事件推进状态机，并把检测耗时字段（如 `detect_total_ms`）回填到任务观测。"
+    },
+    {
+      "file": "src/backend/internal/domain/service/python_service.go",
+      "line": 11,
+      "title": "后端协议抽象边界",
+      "description": "`PythonService` 抽象新增 `EnqueueVideoFrameDetect`。这意味着视频帧链路从“同步拿结果”切到“异步入队 + 回调驱动”，且 HTTP 实现、Mock 实现、UseCase 都必须满足同一接口合同。"
+    },
+    {
+      "file": "src/backend/internal/infrastructure/external/python_service_http.go",
+      "line": 233,
+      "title": "HTTP 适配器发送帧级请求",
+      "description": "`EnqueueVideoFrameDetect` 将帧请求序列化为 JSON 并调用算法 `/algo/video/frames/detect`。它是后端到算法的协议出口；如果这里字段错、路径错，后续回调链路必定错位。"
+    },
+    {
+      "file": "src/backend/pkg/config/config.go",
+      "line": 53,
+      "title": "回调地址配置注入",
+      "description": "`VideoDetectionConfig.CallbackBaseURL` 提供算法回调后端的统一入口。默认值在配置校验中自动填充（见同文件 `validateConfig`），避免运行时因空回调地址导致任务静默失败。"
+    },
+    {
+      "file": "src/backend/internal/interfaces/http/router/router.go",
+      "line": 187,
+      "title": "回调路由编排层",
+      "description": "这里注册了新版主路由 `frame-queued/frame-started/frame-result`，并保留 `task-queued/task-started` 兼容路由。含义是：契约主语义已切到 frame 维度，同时允许过渡期兼容。"
+    },
+    {
+      "file": "src/backend/internal/interfaces/http/handler/video_callback_handler.go",
+      "line": 22,
+      "title": "回调入口处理器",
+      "description": "Handler 层只做两件事：JSON 绑定与错误映射，然后下沉到 UseCase。好处是协议校验集中、业务状态推进集中，便于定位“参数问题”与“状态机问题”的边界。"
+    },
+    {
+      "file": "src/backend/internal/application/dto/video_detection_dto.go",
+      "line": 140,
+      "title": "回调 DTO 契约",
+      "description": "`AlgoVideoTaskQueued/Started/FrameResult...` 定义了后端接收回调的严格字段结构，尤其 `request_id/task_id/frame_no/timestamp_ms/yolo_bboxes`。这层是双方字段语义的防线，不应随意放宽。"
+    },
+    {
+      "file": "src/backend/internal/application/usecase/video_detection_usecase.go",
+      "line": 575,
+      "title": "后端主流程编排",
+      "description": "`runTask` 完成抽帧、并发控制、帧派发。它不直接决定每帧结果，而是将结果推进权交给回调流。这是“后端编排、算法执行、回调闭环”的核心分层点。"
+    },
+    {
+      "file": "src/backend/internal/application/usecase/video_detection_usecase.go",
+      "line": 932,
+      "title": "单帧派发函数",
+      "description": "`dispatchFrameDetect` 使用 `EnqueueVideoFrameDetect` 派发帧请求，并在本地先标记 queued。这个函数是后端 -> 算法的桥接点；也是定位“派发失败 vs 回调失败”的第一断点。"
+    },
+    {
+      "file": "src/backend/internal/application/usecase/video_detection_usecase.go",
+      "line": 281,
+      "title": "回调驱动状态推进",
+      "description": "`HandleAlgoFrameResult` 负责幂等去重、失败收敛、成功落观测并触发自动完成判断；`applyFrameResult` 则负责缺陷跟踪与确认。这一步把算法输出真正转成后端可查询、可统计的数据资产。"
+    },
+    {
+      "file": "src/backend/internal/domain/model/video_analysis.go",
+      "line": 5,
+      "title": "状态与数据流落库图",
+      "description": "`VideoAnalysisTask` + `VideoFrameTaskRequest` + `DefectObservation` 构成了任务级、帧级、观测级三层持久化。排障时按这三层顺序查最稳。\\n\\n```mermaid\\nflowchart LR\\n  A[Frontend StartTask] --> B[VideoAnalysisTask]\\n  B --> C[Frame Extractor]\\n  C --> D[dispatchFrameDetect]\\n  D --> E[Algorithm Queue]\\n  E --> F[Callback frame-result]\\n  F --> G[VideoFrameTaskRequest status]\\n  F --> H[DefectObservation]\\n  H --> I[Defect Confirm / Track]\\n  G --> J[VideoAnalysisTask progress]\\n  I --> J\\n```\\n\\n到这里你可以按“契约 -> 派发 -> 回调 -> 状态机 -> 落库”顺序做端到端联调或 RCA。"
+    }
+  ]
+}

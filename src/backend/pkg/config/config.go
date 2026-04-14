@@ -3,6 +3,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -13,14 +14,14 @@ import (
 // Config 全局配置结构体
 // 包含服务器、数据库、第三方服务等所有配置项
 type Config struct {
-	Server        ServerConfig        `yaml:"server"`         // 服务器配置
-	Database      DatabaseConfig      `yaml:"database"`       // 数据库配置
-	PythonService PythonServiceConfig `yaml:"python_service"` // Python 算法服务配置
-	Detection     DetectionConfig     `yaml:"detection"`      // 检测流程配置
+	Server         ServerConfig         `yaml:"server"`          // 服务器配置
+	Database       DatabaseConfig       `yaml:"database"`        // 数据库配置
+	PythonService  PythonServiceConfig  `yaml:"python_service"`  // Python 算法服务配置
+	Detection      DetectionConfig      `yaml:"detection"`       // 检测流程配置
 	VideoDetection VideoDetectionConfig `yaml:"video_detection"` // 视频检测流程配置
-	Upload        UploadConfig        `yaml:"upload"`         // 文件上传配置
-	Session       SessionConfig       `yaml:"session"`        // Session 配置
-	CORS          CORSConfig          `yaml:"cors"`           // CORS 跨域配置
+	Upload         UploadConfig         `yaml:"upload"`          // 文件上传配置
+	Session        SessionConfig        `yaml:"session"`         // Session 配置
+	CORS           CORSConfig           `yaml:"cors"`            // CORS 跨域配置
 }
 
 // ServerConfig 服务器配置
@@ -51,16 +52,19 @@ type DetectionConfig struct {
 
 // VideoDetectionConfig 视频检测流程配置
 type VideoDetectionConfig struct {
-	SampleFPS                    float64 `yaml:"sample_fps"`                     // 默认抽帧频率
-	PlaybackDelaySeconds         int     `yaml:"playback_delay_seconds"`         // 前端播放缓冲时间
-	TrackWindowSeconds           int     `yaml:"track_window_seconds"`           // 轨迹匹配窗口
-	TrackCloseSeconds            int     `yaml:"track_close_seconds"`            // 轨迹关闭窗口
-	TrackIOUThreshold            float64 `yaml:"track_iou_threshold"`            // 轨迹匹配 IoU 阈值
+	SampleFPS                    float64 `yaml:"sample_fps"`                      // 默认抽帧频率
+	PlaybackDelaySeconds         int     `yaml:"playback_delay_seconds"`          // 前端播放缓冲时间
+	TrackWindowSeconds           int     `yaml:"track_window_seconds"`            // 轨迹匹配窗口
+	TrackCloseSeconds            int     `yaml:"track_close_seconds"`             // 轨迹关闭窗口
+	TrackIOUThreshold            float64 `yaml:"track_iou_threshold"`             // 轨迹匹配 IoU 阈值
 	TrackCenterDistanceThreshold float64 `yaml:"track_center_distance_threshold"` // 轨迹匹配中心点距离阈值
 	ConfirmHits                  int     `yaml:"confirm_hits"`                    // 正式缺陷确认的最少命中次数
-	CandidateConfidenceThreshold float64 `yaml:"candidate_confidence_threshold"` // 候选观测最低置信度
-	PersistConfidenceThreshold   float64 `yaml:"persist_confidence_threshold"`   // 正式缺陷入库最低置信度
-	MaxQueueInflight             int     `yaml:"max_queue_inflight"`             // 帧任务最大并发数
+	CandidateConfidenceThreshold float64 `yaml:"candidate_confidence_threshold"`  // 候选观测最低置信度
+	PersistConfidenceThreshold   float64 `yaml:"persist_confidence_threshold"`    // 正式缺陷入库最低置信度
+	MaxQueueInflight             int     `yaml:"max_queue_inflight"`              // 帧任务最大并发数
+	QueuedTimeoutSeconds         int     `yaml:"queued_timeout_seconds"`          // 启动后等待 queued 的超时时间
+	ProgressIdleTimeoutSeconds   int     `yaml:"progress_idle_timeout_seconds"`   // queued 后无进度的超时时间
+	CallbackBaseURL              string  `yaml:"callback_base_url"`               // 算法端回调后端基础地址
 }
 
 // UploadConfig 文件上传配置
@@ -203,6 +207,15 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.VideoDetection.MaxQueueInflight <= 0 {
 		cfg.VideoDetection.MaxQueueInflight = 8
+	}
+	if cfg.VideoDetection.QueuedTimeoutSeconds <= 0 {
+		cfg.VideoDetection.QueuedTimeoutSeconds = 5
+	}
+	if cfg.VideoDetection.ProgressIdleTimeoutSeconds <= 0 {
+		cfg.VideoDetection.ProgressIdleTimeoutSeconds = 15
+	}
+	if cfg.VideoDetection.CallbackBaseURL == "" {
+		cfg.VideoDetection.CallbackBaseURL = fmt.Sprintf("http://localhost:%d/api/v1/detection/video/callback", cfg.Server.Port)
 	}
 
 	return nil

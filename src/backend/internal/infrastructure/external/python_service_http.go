@@ -230,6 +230,42 @@ func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentReques
 	return &result, nil
 }
 
+// EnqueueVideoFrameDetect 提交视频单帧异步检测入队请求。
+func (s *HTTPPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("视频帧入队请求不能为空")
+	}
+
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("序列化视频帧入队请求失败: %w", err)
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, s.baseURL+"/algo/video/frames/detect", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("创建视频帧入队请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用视频帧入队接口失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("视频帧入队接口返回错误: %d %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result service.VideoFrameDetectEnqueueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析视频帧入队响应失败: %w", err)
+	}
+
+	return &result, nil
+}
+
 func buildMultipartRequest(imagePath string, writeFields func(writer *multipart.Writer) error) (*bytes.Buffer, string, error) {
 	file, err := os.Open(imagePath)
 	if err != nil {

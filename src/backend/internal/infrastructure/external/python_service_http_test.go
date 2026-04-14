@@ -1,6 +1,7 @@
 package external
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -158,5 +159,63 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 	}
 	if result.Defects[0].Confidence != 0.93 {
 		t.Fatalf("unexpected confidence: %v", result.Defects[0].Confidence)
+	}
+}
+
+func TestHTTPPythonServiceEnqueueVideoFrameDetectUsesJSONContract(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Helper()
+
+		if r.URL.Path != "/algo/video/frames/detect" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("unexpected content-type: %s", got)
+		}
+
+		var req domainservice.VideoFrameDetectEnqueueRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode json body failed: %v", err)
+		}
+		if req.RequestID != "frame_req_1" {
+			t.Fatalf("unexpected request_id: %s", req.RequestID)
+		}
+		if req.TaskID != "video_task_1" {
+			t.Fatalf("unexpected task_id: %s", req.TaskID)
+		}
+		if req.FrameNo != 12 {
+			t.Fatalf("unexpected frame_no: %d", req.FrameNo)
+		}
+		if req.CallbackBaseURL != "http://backend/api/v1/detection/video/callback" {
+			t.Fatalf("unexpected callback_base_url: %s", req.CallbackBaseURL)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"accepted","request_id":"frame_req_1","task_id":"video_task_1","queued_at":"2026-04-14T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	pythonService := NewHTTPPythonService(server.URL)
+	result, err := pythonService.EnqueueVideoFrameDetect(&domainservice.VideoFrameDetectEnqueueRequest{
+		RequestID:       "frame_req_1",
+		TaskID:          "video_task_1",
+		BridgeID:        101,
+		FrameNo:         12,
+		TimestampMS:     12000,
+		FrameRef:        "file:///tmp/frame_000012.jpg",
+		ModelName:       "baseline",
+		Conf:            0.25,
+		CallbackBaseURL: "http://backend/api/v1/detection/video/callback",
+	})
+	if err != nil {
+		t.Fatalf("enqueue frame detect failed: %v", err)
+	}
+	if result.Status != "accepted" {
+		t.Fatalf("unexpected status: %s", result.Status)
+	}
+	if result.RequestID != "frame_req_1" {
+		t.Fatalf("unexpected response request_id: %s", result.RequestID)
 	}
 }

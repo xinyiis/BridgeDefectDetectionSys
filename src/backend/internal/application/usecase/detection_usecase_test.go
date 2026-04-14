@@ -58,6 +58,10 @@ func (s *detectionPythonServiceStub) Segment(string, *service.SegmentRequest) (*
 	return nil, nil
 }
 
+func (s *detectionPythonServiceStub) EnqueueVideoFrameDetect(*service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	return nil, nil
+}
+
 func TestDetectionUseCaseUploadAndDetectCalculatesPhysicalDimensions(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {

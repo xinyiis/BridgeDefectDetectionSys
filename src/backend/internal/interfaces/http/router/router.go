@@ -187,6 +187,11 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 func registerVideoCallbackRoutes(r *gin.RouterGroup, videoCallbackHandler *handler.VideoCallbackHandler) {
 	callback := r.Group("/detection/video/callback")
 	{
+		// 新版帧级回调路由（主路径）
+		callback.POST("/frame-queued", videoCallbackHandler.TaskQueued)
+		callback.POST("/frame-started", videoCallbackHandler.TaskStarted)
+
+		// 兼容旧版任务级命名（过渡期保留）
 		callback.POST("/task-queued", videoCallbackHandler.TaskQueued)
 		callback.POST("/task-started", videoCallbackHandler.TaskStarted)
 		callback.POST("/frame-result", videoCallbackHandler.FrameResult)

@@ -68,36 +68,25 @@ BridgeDefectDetectionSys/
 ├── environment-setup/          # 🔧 环境配置脚本
 │   ├── README.md               # 环境安装使用指南
 │   ├── setup_basic_tools.sh    # 基础开发工具安装脚本
-│   ├── setup_backend_env.sh    # Go + MySQL环境一键安装
-│   ├── import_database.sh      # 数据库导入工具
-│   ├── go.mod                  # Go项目依赖配置
-│   ├── go.sum                  # Go依赖版本锁定
-│   └── mysql_config.txt        # MySQL连接配置信息
+│   ├── backend-env/
+│   │   ├── setup_backend_env.sh # Go + MySQL环境一键安装
+│   │   └── import_database.sh   # 数据库导入工具
+│   └── install_ffmpeg_local.sh # 本地 FFmpeg 安装脚本
 │
-├── backend/                    # 🚀 Go后端服务（待开发）
-│   ├── main.go                 # 程序入口
-│   ├── config.yaml             # 配置文件
-│   ├── models/                 # 数据模型
-│   ├── handlers/               # API控制器
-│   ├── middleware/             # 中间件
-│   ├── utils/                  # 工具函数
-│   └── uploads/                # 文件存储目录
+├── src/
+│   └── backend/                # 🚀 Go后端服务（已实现）
+│       ├── cmd/server/main.go  # 程序入口
+│       ├── config.yaml         # 配置文件
+│       ├── internal/           # 业务与基础设施代码
+│       ├── migrations/         # 迁移 SQL
+│       └── README.md           # 后端说明文档
 │
-├── algorithm/                  # 🧠 Python算法服务（待开发）
-│   ├── main.py                 # FastAPI入口
-│   ├── models/                 # 模型文件
-│   ├── detect.py               # YOLO检测模块
-│   ├── segment.py              # SAM分割模块
-│   ├── enhance.py              # 图像增强模块
-│   └── requirements.txt        # Python依赖
-│
-└── frontend/                   # 🎨 Vue前端（待开发）
-    ├── src/
-    ├── public/
-    └── package.json
+├── start_root_backend.sh       # 后端统一启动/停止脚本
+├── start_backend_simple.sh     # 后端简化启动脚本（保留）
+└── verify_backend_migration.sh # 迁移验收脚本
 ```
 
-> **当前状态**：项目处于规划阶段，已完成技术方案设计和环境配置脚本。
+> **当前状态**：后端服务（`src/backend`）已实现并可运行，环境脚本与迁移验收脚本可直接使用。
 
 ---
 
@@ -129,7 +118,7 @@ sudo ./setup_basic_tools.sh
 
 ```bash
 # 运行安装脚本
-sudo ./setup_backend_env.sh
+sudo ./backend-env/setup_backend_env.sh
 
 # 重新加载环境变量
 source ~/.bashrc
@@ -159,7 +148,7 @@ go mod verify
 如果有现成的数据库文件：
 
 ```bash
-./import_database.sh your_database.sql
+./backend-env/import_database.sh your_database.sql
 ```
 
 或手动创建数据库：
@@ -192,8 +181,8 @@ npm -v
 ### 后端开发
 
 ```bash
-# 1. 进入后端目录（待创建）
-cd backend
+# 1. 进入后端目录
+cd src/backend
 
 # 2. 安装依赖
 go mod tidy
@@ -202,7 +191,7 @@ go mod tidy
 # 编辑 config.yaml 文件
 
 # 4. 启动服务
-go run main.go
+go run cmd/server/main.go
 ```
 
 **默认端口**：http://localhost:8080

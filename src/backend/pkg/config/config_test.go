@@ -50,6 +50,15 @@ func TestValidateConfigDefaultsPersistenceWorkers(t *testing.T) {
 	if cfg.VideoDetection.MaxQueueInflight != 8 {
 		t.Fatalf("expected default max_queue_inflight=8, got %d", cfg.VideoDetection.MaxQueueInflight)
 	}
+	if cfg.VideoDetection.QueuedTimeoutSeconds != 5 {
+		t.Fatalf("expected default queued_timeout_seconds=5, got %d", cfg.VideoDetection.QueuedTimeoutSeconds)
+	}
+	if cfg.VideoDetection.ProgressIdleTimeoutSeconds != 15 {
+		t.Fatalf("expected default progress_idle_timeout_seconds=15, got %d", cfg.VideoDetection.ProgressIdleTimeoutSeconds)
+	}
+	if cfg.VideoDetection.CallbackBaseURL != "http://localhost:8080/api/v1/detection/video/callback" {
+		t.Fatalf("expected default callback_base_url, got %s", cfg.VideoDetection.CallbackBaseURL)
+	}
 }
 
 func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
@@ -74,11 +83,14 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 			TrackIOUThreshold:            0.5,
 			TrackCenterDistanceThreshold: 0.1,
 			ConfirmHits:                  4,
-			CandidateConfidenceThreshold: 0.6,
-			PersistConfidenceThreshold:   0.7,
-			MaxQueueInflight:             12,
-		},
-	}
+				CandidateConfidenceThreshold: 0.6,
+				PersistConfidenceThreshold:   0.7,
+				MaxQueueInflight:             12,
+				QueuedTimeoutSeconds:         7,
+				ProgressIdleTimeoutSeconds:   21,
+				CallbackBaseURL:              "http://backend/api/v1/detection/video/callback",
+			},
+		}
 
 	if err := validateConfig(cfg); err != nil {
 		t.Fatalf("validate config: %v", err)
@@ -113,5 +125,14 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 	}
 	if cfg.VideoDetection.MaxQueueInflight != 12 {
 		t.Fatalf("expected max_queue_inflight to stay 12, got %d", cfg.VideoDetection.MaxQueueInflight)
+	}
+	if cfg.VideoDetection.QueuedTimeoutSeconds != 7 {
+		t.Fatalf("expected queued_timeout_seconds to stay 7, got %d", cfg.VideoDetection.QueuedTimeoutSeconds)
+	}
+	if cfg.VideoDetection.ProgressIdleTimeoutSeconds != 21 {
+		t.Fatalf("expected progress_idle_timeout_seconds to stay 21, got %d", cfg.VideoDetection.ProgressIdleTimeoutSeconds)
+	}
+	if cfg.VideoDetection.CallbackBaseURL != "http://backend/api/v1/detection/video/callback" {
+		t.Fatalf("expected callback_base_url to stay explicit, got %s", cfg.VideoDetection.CallbackBaseURL)
 	}
 }

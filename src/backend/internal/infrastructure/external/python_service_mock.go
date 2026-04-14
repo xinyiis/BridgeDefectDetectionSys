@@ -3,6 +3,7 @@ package external
 
 import (
 	"encoding/base64"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -105,5 +106,22 @@ func (s *MockPythonService) Segment(string, *service.SegmentRequest) (*service.S
 				MaskBase64: base64.StdEncoding.EncodeToString([]byte("mock_mask")),
 			},
 		},
+	}, nil
+}
+
+// EnqueueVideoFrameDetect 模拟视频帧异步入队。
+func (s *MockPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetectEnqueueRequest) (*service.VideoFrameDetectEnqueueResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("视频帧入队请求不能为空")
+	}
+	if req.RequestID == "" || req.TaskID == "" {
+		return nil, fmt.Errorf("request_id 和 task_id 不能为空")
+	}
+
+	return &service.VideoFrameDetectEnqueueResponse{
+		Status:    "accepted",
+		RequestID: req.RequestID,
+		TaskID:    req.TaskID,
+		QueuedAt:  time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
