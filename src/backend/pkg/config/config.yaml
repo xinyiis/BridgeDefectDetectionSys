@@ -14,8 +14,9 @@ python_service:
   timeout: 30
 
 upload:
-  image_dir: "./test_uploads/images"
-  result_dir: "./test_uploads/results"
+  base_dir: "./test_uploads"
+  image_dir: "images"
+  result_dir: "results"
   max_size: 10
 
 session:

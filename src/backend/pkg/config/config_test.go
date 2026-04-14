@@ -23,8 +23,8 @@ func TestValidateConfigDefaultsPersistenceWorkers(t *testing.T) {
 	if cfg.Detection.PersistenceWorkers != 2 {
 		t.Fatalf("expected default persistence_workers=2, got %d", cfg.Detection.PersistenceWorkers)
 	}
-	if cfg.VideoDetection.SampleFPS != 1 {
-		t.Fatalf("expected default sample_fps=1, got %v", cfg.VideoDetection.SampleFPS)
+	if cfg.VideoDetection.SampleFPS != 3 {
+		t.Fatalf("expected default sample_fps=3, got %v", cfg.VideoDetection.SampleFPS)
 	}
 	if cfg.VideoDetection.TrackWindowSeconds != 3 {
 		t.Fatalf("expected default track_window_seconds=3, got %d", cfg.VideoDetection.TrackWindowSeconds)
@@ -59,6 +59,18 @@ func TestValidateConfigDefaultsPersistenceWorkers(t *testing.T) {
 	if cfg.VideoDetection.CallbackBaseURL != "http://localhost:8080/api/v1/detection/video/callback" {
 		t.Fatalf("expected default callback_base_url, got %s", cfg.VideoDetection.CallbackBaseURL)
 	}
+	if cfg.Upload.BaseDir != "/autodl-tmp/NLP/source" {
+		t.Fatalf("expected default upload.base_dir=/autodl-tmp/NLP/source, got %s", cfg.Upload.BaseDir)
+	}
+	if cfg.Upload.ImageDir != "images" {
+		t.Fatalf("expected default upload.image_dir=images, got %s", cfg.Upload.ImageDir)
+	}
+	if cfg.Upload.ResultDir != "results" {
+		t.Fatalf("expected default upload.result_dir=results, got %s", cfg.Upload.ResultDir)
+	}
+	if cfg.Upload.MaxSize != 10 {
+		t.Fatalf("expected default upload.max_size=10, got %d", cfg.Upload.MaxSize)
+	}
 }
 
 func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
@@ -83,14 +95,20 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 			TrackIOUThreshold:            0.5,
 			TrackCenterDistanceThreshold: 0.1,
 			ConfirmHits:                  4,
-				CandidateConfidenceThreshold: 0.6,
-				PersistConfidenceThreshold:   0.7,
-				MaxQueueInflight:             12,
-				QueuedTimeoutSeconds:         7,
-				ProgressIdleTimeoutSeconds:   21,
-				CallbackBaseURL:              "http://backend/api/v1/detection/video/callback",
-			},
-		}
+			CandidateConfidenceThreshold: 0.6,
+			PersistConfidenceThreshold:   0.7,
+			MaxQueueInflight:             12,
+			QueuedTimeoutSeconds:         7,
+			ProgressIdleTimeoutSeconds:   21,
+			CallbackBaseURL:              "http://backend/api/v1/detection/video/callback",
+		},
+		Upload: UploadConfig{
+			BaseDir:   "/data/source",
+			ImageDir:  "images_custom",
+			ResultDir: "results_custom",
+			MaxSize:   20,
+		},
+	}
 
 	if err := validateConfig(cfg); err != nil {
 		t.Fatalf("validate config: %v", err)
@@ -134,5 +152,17 @@ func TestValidateConfigKeepsExplicitPersistenceWorkers(t *testing.T) {
 	}
 	if cfg.VideoDetection.CallbackBaseURL != "http://backend/api/v1/detection/video/callback" {
 		t.Fatalf("expected callback_base_url to stay explicit, got %s", cfg.VideoDetection.CallbackBaseURL)
+	}
+	if cfg.Upload.BaseDir != "/data/source" {
+		t.Fatalf("expected upload.base_dir to stay /data/source, got %s", cfg.Upload.BaseDir)
+	}
+	if cfg.Upload.ImageDir != "images_custom" {
+		t.Fatalf("expected upload.image_dir to stay images_custom, got %s", cfg.Upload.ImageDir)
+	}
+	if cfg.Upload.ResultDir != "results_custom" {
+		t.Fatalf("expected upload.result_dir to stay results_custom, got %s", cfg.Upload.ResultDir)
+	}
+	if cfg.Upload.MaxSize != 20 {
+		t.Fatalf("expected upload.max_size to stay 20, got %d", cfg.Upload.MaxSize)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -69,6 +70,7 @@ type VideoDetectionConfig struct {
 
 // UploadConfig 文件上传配置
 type UploadConfig struct {
+	BaseDir   string `yaml:"base_dir"`   // 媒体文件根目录（支持绝对路径）
 	ImageDir  string `yaml:"image_dir"`  // 原始图片保存目录
 	ResultDir string `yaml:"result_dir"` // 检测结果保存目录
 	MaxSize   int    `yaml:"max_size"`   // 最大文件大小（MB）
@@ -179,7 +181,7 @@ func validateConfig(cfg *Config) error {
 		cfg.Detection.PersistenceWorkers = 2
 	}
 	if cfg.VideoDetection.SampleFPS <= 0 {
-		cfg.VideoDetection.SampleFPS = 1
+		cfg.VideoDetection.SampleFPS = 3
 	}
 	if cfg.VideoDetection.PlaybackDelaySeconds <= 0 {
 		cfg.VideoDetection.PlaybackDelaySeconds = 6
@@ -217,6 +219,18 @@ func validateConfig(cfg *Config) error {
 	if cfg.VideoDetection.CallbackBaseURL == "" {
 		cfg.VideoDetection.CallbackBaseURL = fmt.Sprintf("http://localhost:%d/api/v1/detection/video/callback", cfg.Server.Port)
 	}
+	if cfg.Upload.BaseDir == "" {
+		cfg.Upload.BaseDir = "/autodl-tmp/NLP/source"
+	}
+	if cfg.Upload.ImageDir == "" {
+		cfg.Upload.ImageDir = "images"
+	}
+	if cfg.Upload.ResultDir == "" {
+		cfg.Upload.ResultDir = "results"
+	}
+	if cfg.Upload.MaxSize <= 0 {
+		cfg.Upload.MaxSize = 10
+	}
 
 	return nil
 }
@@ -224,9 +238,15 @@ func validateConfig(cfg *Config) error {
 // createUploadDirs 创建上传目录
 // 如果目录不存在则自动创建
 func createUploadDirs(cfg *Config) {
+	baseDir := cfg.Upload.BaseDir
 	dirs := []string{
-		cfg.Upload.ImageDir,
-		cfg.Upload.ResultDir,
+		baseDir,
+		resolveUploadDir(baseDir, cfg.Upload.ImageDir, "images"),
+		resolveUploadDir(baseDir, cfg.Upload.ResultDir, "results"),
+		filepath.Join(baseDir, "video"),
+		filepath.Join(baseDir, "tmp", "images"),
+		filepath.Join(baseDir, "video_tasks"),
+		filepath.Join(baseDir, "video_frames"),
 	}
 
 	for _, dir := range dirs {
@@ -234,6 +254,17 @@ func createUploadDirs(cfg *Config) {
 			log.Printf("⚠️  创建目录失败 %s: %v", dir, err)
 		}
 	}
+}
+
+func resolveUploadDir(baseDir, configured, fallback string) string {
+	target := configured
+	if target == "" {
+		target = fallback
+	}
+	if filepath.IsAbs(target) {
+		return target
+	}
+	return filepath.Join(baseDir, target)
 }
 
 // GetConnMaxLifetime 获取连接最大生命周期（time.Duration 类型）

@@ -54,8 +54,9 @@ func setupRouterTestConfig() *config.Config {
 			MaxQueueInflight:             8,
 		},
 		Upload: config.UploadConfig{
-			ImageDir:  "./test_uploads/images",
-			ResultDir: "./test_uploads/results",
+			BaseDir:   "./test_uploads",
+			ImageDir:  "images",
+			ResultDir: "results",
 			MaxSize:   10,
 		},
 		Session: config.SessionConfig{

@@ -3,6 +3,8 @@
 package router
 
 import (
+	"strings"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -82,7 +84,7 @@ func setupGlobalMiddleware(r *gin.Engine, cfg *config.Config) {
 // 用于访问上传的图片和检测结果
 func setupStaticFiles(r *gin.Engine, cfg *config.Config) {
 	// 访问路径: http://localhost:8080/uploads/images/xxx.jpg
-	r.Static("/uploads", "./uploads")
+	r.Static("/uploads", uploadBaseDir(cfg))
 }
 
 // setupAPIRoutes 配置 API 路由
@@ -100,7 +102,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// 2. Service 层
 	userService := service.NewUserService(userRepo)
-	fileService := persistence.NewLocalFileStorage("./uploads")
+	fileService := persistence.NewLocalFileStorage(uploadBaseDir(cfg))
 	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
 	droneService := service.NewDroneService(db, droneRepo)
 
@@ -182,6 +184,17 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	admin.Use(middleware.AuthRequired(db))
 	admin.Use(middleware.AdminRequired())
 	registerAdminRoutes(admin, userHandler)
+}
+
+func uploadBaseDir(cfg *config.Config) string {
+	if cfg == nil {
+		return "./uploads"
+	}
+	baseDir := strings.TrimSpace(cfg.Upload.BaseDir)
+	if baseDir == "" {
+		return "./uploads"
+	}
+	return baseDir
 }
 
 func registerVideoCallbackRoutes(r *gin.RouterGroup, videoCallbackHandler *handler.VideoCallbackHandler) {

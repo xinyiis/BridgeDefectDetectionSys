@@ -23,8 +23,6 @@ import (
 	videopkg "github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/video"
 )
 
-const uploadsRoot = "./uploads"
-
 // VideoDetectionUseCase 视频分析用例。
 type VideoDetectionUseCase struct {
 	defectService   *service.DefectService
@@ -74,7 +72,7 @@ func NewVideoDetectionUseCase(
 		frameTaskRepo,
 		observationRepo,
 		appconfig.VideoDetectionConfig{
-			SampleFPS:                    1,
+			SampleFPS:                    3,
 			PlaybackDelaySeconds:         6,
 			TrackWindowSeconds:           3,
 			TrackCloseSeconds:            4,
@@ -138,7 +136,7 @@ func (uc *VideoDetectionUseCase) UploadVideo(req *dto.VideoUploadRequest, curren
 		return nil, errors.New("无权访问此桥梁")
 	}
 
-	videoPath, err := uc.fileService.SaveUploadedFile(req.Video, "videos")
+	videoPath, err := uc.fileService.SaveUploadedFile(req.Video, "video")
 	if err != nil {
 		return nil, fmt.Errorf("视频保存失败: %w", err)
 	}
@@ -590,7 +588,7 @@ func (uc *VideoDetectionUseCase) runTask(task *model.VideoAnalysisTask, send fun
 	uc.tasks.Store(task.TaskID, task)
 	runtime := uc.ensureRuntime(task.TaskID, send)
 
-	tempDir := filepath.Join(uploadsRoot, "video_tasks", task.TaskID, "frames")
+	tempDir := uc.fileService.ResolvePath(filepath.Join("video_tasks", task.TaskID, "frames"))
 	_ = os.RemoveAll(tempDir)
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return fmt.Errorf("创建视频帧工作目录失败: %w", err)
@@ -825,10 +823,7 @@ func (uc *VideoDetectionUseCase) toTaskResponse(task *model.VideoAnalysisTask) *
 }
 
 func (uc *VideoDetectionUseCase) resolveStoredPath(storedPath string) string {
-	if filepath.IsAbs(storedPath) {
-		return storedPath
-	}
-	return filepath.Join(uploadsRoot, storedPath)
+	return uc.fileService.ResolvePath(storedPath)
 }
 
 func (uc *VideoDetectionUseCase) persistFrameEvidence(framePath string) (string, error) {
@@ -839,7 +834,7 @@ func (uc *VideoDetectionUseCase) persistFrameEvidence(framePath string) (string,
 
 	filename := fmt.Sprintf("%s%s", uuid.NewString(), filepath.Ext(framePath))
 	relativePath := filepath.Join("video_frames", filename)
-	fullPath := filepath.Join(uploadsRoot, relativePath)
+	fullPath := uc.fileService.ResolvePath(relativePath)
 
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return "", fmt.Errorf("创建证据目录失败: %w", err)
