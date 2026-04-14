@@ -54,7 +54,7 @@ COLUMN_CHECKS=(
 )
 INDEX_CHECKS=(
     users:username:UNIQUE
-    users:email:UNIQUE
+    users:email:ANY
     bridges:bridge_code:UNIQUE
     reports:user_id:ANY
     reports:bridge_id:ANY
@@ -245,7 +245,7 @@ SET @bid = LAST_INSERT_ID();
 INSERT INTO drones (name, model, stream_url, user_id, created_at, updated_at)
 VALUES ('verify-drone-${stamp}', 'verify-model', 'rtsp://example.com/live', @uid, NOW(), NOW());
 
-INSERT INTO defects (bridge_id, defect_type, image_path, result_path, bbox, length, width, area, confidence, detected_at, created_at, updated_at)
+INSERT INTO defects (bridge_id, defect_type, image_path, result_path, b_box, length, width, area, confidence, detected_at, created_at, updated_at)
 VALUES (@bid, 'crack', '/tmp/source.jpg', '/tmp/result.jpg', '{}', 0.1, 0.1, 0.01, 0.9, NOW(), NOW(), NOW());
 
 INSERT INTO reports (report_name, report_type, user_id, bridge_id, start_time, end_time, status, created_at, updated_at)
@@ -254,7 +254,7 @@ VALUES ('verify-report-${stamp}', 'bridge_inspection', @uid, @bid, NOW(), NOW(),
 INSERT INTO video_analysis_tasks (task_id, session_id, user_id, bridge_id, video_path, fps, model_name, pixel_ratio, enable_segment, status, total_frames, processed_frames, confirmed_defects, created_at, updated_at)
 VALUES ('verify-task-${stamp}', 'verify-session-${stamp}', @uid, @bid, '/tmp/mock.mp4', 1, 'baseline', 1, 0, 'uploaded', 0, 0, 0, NOW(), NOW());
 
-INSERT INTO defect_observations (task_id, bridge_id, frame_no, timestamp_ms, defect_type, bbox, confidence, frame_path, result_path, track_id, created_at)
+INSERT INTO defect_observations (task_id, bridge_id, frame_no, timestamp_ms, defect_type, b_box, confidence, frame_path, result_path, track_id, created_at)
 VALUES ('verify-task-${stamp}', @bid, 1, 0, 'crack', '{}', 0.9, '/tmp/frame.jpg', '/tmp/result.jpg', 'verify-track-${stamp}', NOW());
 
 ROLLBACK;

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -132,6 +133,37 @@ func (s *streamingPythonService) EnqueueVideoFrameDetect(req *service.VideoFrame
 		RequestID: req.RequestID,
 		TaskID:    req.TaskID,
 	}, nil
+}
+
+func postJSON(t *testing.T, client *http.Client, targetURL string, payload map[string]any) (int, string) {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal callback payload failed: %v", err)
+	}
+	resp, err := client.Post(targetURL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post callback failed: %v", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(respBody)
+}
+
+func postFrameResultWithRetry(t *testing.T, client *http.Client, targetURL string, payload map[string]any) {
+	t.Helper()
+	var lastStatus int
+	var lastBody string
+	for attempt := 0; attempt < 40; attempt++ {
+		status, body := postJSON(t, client, targetURL, payload)
+		if status == http.StatusOK {
+			return
+		}
+		lastStatus = status
+		lastBody = body
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("frame-result callback failed after retries: status=%d body=%s", lastStatus, lastBody)
 }
 
 func setupVideoTaskRouter(db *gorm.DB) *gin.Engine {
@@ -562,6 +594,51 @@ func TestVideoUserFlowE2E_WithSyntheticVideoAndWebSocket(t *testing.T) {
 		t.Fatalf("dial websocket failed: %v", err)
 	}
 	defer conn.Close()
+
+	callbackBase := server.URL + "/api/v1/detection/video/callback"
+	client := server.Client()
+	queuedPayload := map[string]any{
+		"task_id":   taskID,
+		"status":    "queued",
+		"queued_at": "2026-04-14T12:00:00Z",
+	}
+	if status, body := postJSON(t, client, callbackBase+"/frame-queued", queuedPayload); status != http.StatusOK {
+		t.Fatalf("queued callback failed: status=%d body=%s", status, body)
+	}
+	startedPayload := map[string]any{
+		"task_id":    taskID,
+		"status":     "processing",
+		"started_at": "2026-04-14T12:00:01Z",
+	}
+	if status, body := postJSON(t, client, callbackBase+"/frame-started", startedPayload); status != http.StatusOK {
+		t.Fatalf("started callback failed: status=%d body=%s", status, body)
+	}
+	for idx, framePath := range extractor.frames {
+		frameNo := idx + 1
+		framePayload := map[string]any{
+			"request_id":       fmt.Sprintf("%s_frame_%06d", taskID, frameNo),
+			"task_id":          taskID,
+			"frame_no":         frameNo,
+			"timestamp_ms":     (frameNo - 1) * 1000,
+			"status":           "success",
+			"queue_latency_ms": 50,
+			"detect_total_ms":  1200,
+			"decode_ms":        80,
+			"infer_ms":         900,
+			"postprocess_ms":   220,
+			"frame_ref":        "file://" + framePath,
+			"yolo_bboxes": []map[string]any{
+				{
+					"box_id":      1,
+					"class_idx":   0,
+					"class_name":  "Crack",
+					"yolo_coords": []float64{0.5, 0.5, 0.3, 0.1},
+					"confidence":  0.92,
+				},
+			},
+		}
+		postFrameResultWithRetry(t, client, callbackBase+"/frame-result", framePayload)
+	}
 
 	seenConnected := false
 	seenFrame := false

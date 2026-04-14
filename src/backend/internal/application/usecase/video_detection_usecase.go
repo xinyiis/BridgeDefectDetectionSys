@@ -44,13 +44,13 @@ type VideoDetectionUseCase struct {
 }
 
 type videoTaskRuntime struct {
-	mu       sync.Mutex
-	send     func(any) error
-	summary  map[string]int
-	queuedAt time.Time
+	mu             sync.Mutex
+	send           func(any) error
+	summary        map[string]int
+	queuedAt       time.Time
 	lastProgressAt time.Time
-	done     chan struct{}
-	doneOnce sync.Once
+	done           chan struct{}
+	doneOnce       sync.Once
 }
 
 // NewVideoDetectionUseCase 创建视频分析用例。
@@ -360,35 +360,20 @@ func (uc *VideoDetectionUseCase) HandleAlgoFrameResult(req *dto.AlgoVideoFrameRe
 	}
 
 	runtime := uc.loadRuntime(task.TaskID)
-	if runtime != nil {
-		runtime.mu.Lock()
-	}
 	task, err = uc.taskRepo.FindByTaskID(req.TaskID)
 	if err != nil {
-		if runtime != nil {
-			runtime.mu.Unlock()
-		}
 		return nil, err
 	}
 	if task == nil {
-		if runtime != nil {
-			runtime.mu.Unlock()
-		}
 		return nil, errors.New("任务不存在")
 	}
 
 	if err := uc.applyFrameResult(task, req, runtime); err != nil {
-		if runtime != nil {
-			runtime.mu.Unlock()
-		}
 		return nil, err
 	}
 	uc.markRuntimeProgress(task.TaskID, time.Now())
 
 	shouldAutoComplete := task.TotalFrames > 0 && task.ProcessedFrames >= task.TotalFrames && task.Status != model.VideoTaskCompleted
-	if runtime != nil {
-		runtime.mu.Unlock()
-	}
 
 	if shouldAutoComplete {
 		if _, err := uc.HandleAlgoTaskCompleted(&dto.AlgoVideoTaskCompletedCallbackRequest{
@@ -1152,7 +1137,9 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 			track.Status = trackConfirmed
 			task.ConfirmedDefects++
 			if runtime != nil {
+				runtime.mu.Lock()
 				runtime.summary[track.DefectType]++
+				runtime.mu.Unlock()
 			}
 		}
 
@@ -1188,9 +1175,15 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 	}
 	uc.tasks.Store(task.TaskID, task)
 
+	send := (func(any) error)(nil)
 	if runtime != nil {
+		runtime.mu.Lock()
+		send = runtime.send
+		runtime.mu.Unlock()
+	}
+	if send != nil {
 		progress := currentProgress(task)
-		uc.sendMessage(runtime.send, dto.VideoFrameMessage{
+		uc.sendMessage(send, dto.VideoFrameMessage{
 			Type:                "frame",
 			TaskID:              task.TaskID,
 			SessionID:           task.SessionID,
@@ -1206,7 +1199,7 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 			QueueLatencyMS:      req.QueueLatencyMS,
 			DetectLatencyMS:     req.DetectTotalMS,
 		})
-		uc.sendMessage(runtime.send, dto.VideoProgressMessage{
+		uc.sendMessage(send, dto.VideoProgressMessage{
 			Type:            "progress",
 			TaskID:          task.TaskID,
 			SessionID:       task.SessionID,
@@ -1222,10 +1215,6 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 
 func (uc *VideoDetectionUseCase) finalizeOpenTracks(task *model.VideoAnalysisTask) error {
 	runtime := uc.loadRuntime(task.TaskID)
-	if runtime != nil {
-		runtime.mu.Lock()
-		defer runtime.mu.Unlock()
-	}
 
 	tracks := uc.loadTracks(task.TaskID)
 	changed := false
@@ -1247,7 +1236,9 @@ func (uc *VideoDetectionUseCase) finalizeOpenTracks(task *model.VideoAnalysisTas
 		track.DefectID = &created.ID
 		task.ConfirmedDefects++
 		if runtime != nil {
+			runtime.mu.Lock()
 			runtime.summary[track.DefectType]++
+			runtime.mu.Unlock()
 		}
 	}
 

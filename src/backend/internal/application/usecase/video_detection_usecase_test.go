@@ -8,9 +8,12 @@ import (
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/dto"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/usecase"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
@@ -85,20 +88,44 @@ func (s *stubPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetec
 	}, nil
 }
 
-func wireSuccessfulCallbacks(videoUC *usecase.VideoDetectionUseCase, pythonService *stubPythonService) {
+func wireSuccessfulCallbacks(t *testing.T, videoUC *usecase.VideoDetectionUseCase, pythonService *stubPythonService) {
+	t.Helper()
+	requests := make(chan *service.VideoFrameDetectEnqueueRequest, 32)
+	t.Cleanup(func() {
+		close(requests)
+	})
+
 	pythonService.onEnqueue = func(req *service.VideoFrameDetectEnqueueRequest) {
-		go func() {
-			_, _ = videoUC.HandleAlgoTaskQueued(&dto.AlgoVideoTaskQueuedCallbackRequest{
+		if req == nil {
+			return
+		}
+		requests <- req
+	}
+
+	go func() {
+		var sentStarted sync.Map
+		for req := range requests {
+			if _, err := videoUC.HandleAlgoTaskQueued(&dto.AlgoVideoTaskQueuedCallbackRequest{
 				TaskID:   req.TaskID,
 				Status:   "queued",
 				QueuedAt: time.Now().UTC().Format(time.RFC3339),
-			})
-			_, _ = videoUC.HandleAlgoTaskStarted(&dto.AlgoVideoTaskStartedCallbackRequest{
-				TaskID:    req.TaskID,
-				Status:    "processing",
-				StartedAt: time.Now().UTC().Format(time.RFC3339),
-			})
-			_, _ = videoUC.HandleAlgoFrameResult(&dto.AlgoVideoFrameResultCallbackRequest{
+			}); err != nil {
+				t.Errorf("task queued callback failed: %v", err)
+				continue
+			}
+
+			if _, loaded := sentStarted.LoadOrStore(req.TaskID, struct{}{}); !loaded {
+				if _, err := videoUC.HandleAlgoTaskStarted(&dto.AlgoVideoTaskStartedCallbackRequest{
+					TaskID:    req.TaskID,
+					Status:    "processing",
+					StartedAt: time.Now().UTC().Format(time.RFC3339),
+				}); err != nil {
+					t.Errorf("task started callback failed: %v", err)
+					continue
+				}
+			}
+
+			if _, err := videoUC.HandleAlgoFrameResult(&dto.AlgoVideoFrameResultCallbackRequest{
 				RequestID:      req.RequestID,
 				TaskID:         req.TaskID,
 				FrameNo:        req.FrameNo,
@@ -119,9 +146,11 @@ func wireSuccessfulCallbacks(videoUC *usecase.VideoDetectionUseCase, pythonServi
 						Confidence: 0.92,
 					},
 				},
-			})
-		}()
-	}
+			}); err != nil {
+				t.Errorf("frame result callback failed: %v", err)
+			}
+		}
+	}()
 }
 
 func setupVideoUseCaseTestDB(t *testing.T) *gorm.DB {
@@ -256,7 +285,7 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 		frameTaskRepo,
 		observationRepo,
 	)
-	wireSuccessfulCallbacks(videoUC, pythonService)
+	wireSuccessfulCallbacks(t, videoUC, pythonService)
 
 	now := time.Now()
 	task := &model.VideoAnalysisTask{
@@ -463,7 +492,7 @@ func TestVideoDetectionUseCase_HonorsCandidateConfidenceThreshold(t *testing.T) 
 			ProgressIdleTimeoutSeconds:   1,
 		},
 	)
-	wireSuccessfulCallbacks(videoUC, pythonService)
+	wireSuccessfulCallbacks(t, videoUC, pythonService)
 
 	task := &model.VideoAnalysisTask{
 		TaskID:     "video_task_threshold",
@@ -498,5 +527,142 @@ func TestVideoDetectionUseCase_HonorsCandidateConfidenceThreshold(t *testing.T) 
 	}
 	if defectCount != 0 {
 		t.Fatalf("expected no confirmed defects under high candidate threshold, got %d", defectCount)
+	}
+}
+
+func TestVideoDetectionUseCase_QueuedTimeoutFailsTask(t *testing.T) {
+	db := setupVideoUseCaseTestDB(t)
+	user := createVideoTestUser(t, db)
+	bridge := createVideoTestBridge(t, db, user.ID)
+
+	bridgeRepo := persistence.NewBridgeRepository(db)
+	defectRepo := persistence.NewDefectRepository(db)
+	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
+	observationRepo := persistence.NewDefectObservationRepository(db)
+	fileService := persistence.NewLocalFileStorage("./uploads")
+	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
+	defectService := service.NewDefectService(db, defectRepo, bridgeRepo)
+
+	tempDir := t.TempDir()
+	frames := []string{createJPEGFrame(t, tempDir, "frame_001.jpg")}
+
+	pythonService := &stubPythonService{}
+	videoUC := usecase.NewVideoDetectionUseCaseWithConfig(
+		defectService,
+		bridgeService,
+		pythonService,
+		fileService,
+		&stubFrameExtractor{frames: frames},
+		taskRepo,
+		frameTaskRepo,
+		observationRepo,
+		appconfig.VideoDetectionConfig{
+			SampleFPS:                  1,
+			MaxQueueInflight:           1,
+			QueuedTimeoutSeconds:       1,
+			ProgressIdleTimeoutSeconds: 1,
+		},
+	)
+
+	task := &model.VideoAnalysisTask{
+		TaskID:     "video_task_queued_timeout",
+		SessionID:  "session_queued_timeout",
+		UserID:     user.ID,
+		BridgeID:   bridge.ID,
+		VideoPath:  "videos/test.mp4",
+		FPS:        1,
+		ModelName:  "baseline",
+		PixelRatio: 0.01,
+		Status:     model.VideoTaskReadyToProcess,
+	}
+	if err := taskRepo.Create(task); err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	err := videoUC.StreamTask(task.TaskID, task.SessionID, user, func(any) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "queued 回调超时") {
+		t.Fatalf("expected queued timeout error, got %v", err)
+	}
+
+	storedTask, err := taskRepo.FindByTaskID(task.TaskID)
+	if err != nil {
+		t.Fatalf("find task failed: %v", err)
+	}
+	if storedTask.Status != model.VideoTaskFailed {
+		t.Fatalf("expected failed task, got %s", storedTask.Status)
+	}
+}
+
+func TestVideoDetectionUseCase_ProgressIdleTimeoutFailsTask(t *testing.T) {
+	db := setupVideoUseCaseTestDB(t)
+	user := createVideoTestUser(t, db)
+	bridge := createVideoTestBridge(t, db, user.ID)
+
+	bridgeRepo := persistence.NewBridgeRepository(db)
+	defectRepo := persistence.NewDefectRepository(db)
+	taskRepo := persistence.NewVideoTaskRepository(db)
+	frameTaskRepo := persistence.NewVideoFrameTaskRepository(db)
+	observationRepo := persistence.NewDefectObservationRepository(db)
+	fileService := persistence.NewLocalFileStorage("./uploads")
+	bridgeService := service.NewBridgeService(db, bridgeRepo, fileService)
+	defectService := service.NewDefectService(db, defectRepo, bridgeRepo)
+
+	tempDir := t.TempDir()
+	frames := []string{createJPEGFrame(t, tempDir, "frame_001.jpg")}
+
+	pythonService := &stubPythonService{}
+	videoUC := usecase.NewVideoDetectionUseCaseWithConfig(
+		defectService,
+		bridgeService,
+		pythonService,
+		fileService,
+		&stubFrameExtractor{frames: frames},
+		taskRepo,
+		frameTaskRepo,
+		observationRepo,
+		appconfig.VideoDetectionConfig{
+			SampleFPS:                  1,
+			MaxQueueInflight:           1,
+			QueuedTimeoutSeconds:       1,
+			ProgressIdleTimeoutSeconds: 1,
+		},
+	)
+	pythonService.onEnqueue = func(req *service.VideoFrameDetectEnqueueRequest) {
+		go func() {
+			_, _ = videoUC.HandleAlgoTaskQueued(&dto.AlgoVideoTaskQueuedCallbackRequest{
+				TaskID:   req.TaskID,
+				Status:   "queued",
+				QueuedAt: time.Now().UTC().Format(time.RFC3339),
+			})
+		}()
+	}
+
+	task := &model.VideoAnalysisTask{
+		TaskID:     "video_task_progress_idle_timeout",
+		SessionID:  "session_progress_idle_timeout",
+		UserID:     user.ID,
+		BridgeID:   bridge.ID,
+		VideoPath:  "videos/test.mp4",
+		FPS:        1,
+		ModelName:  "baseline",
+		PixelRatio: 0.01,
+		Status:     model.VideoTaskReadyToProcess,
+	}
+	if err := taskRepo.Create(task); err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	err := videoUC.StreamTask(task.TaskID, task.SessionID, user, func(any) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "无进度消息超时") {
+		t.Fatalf("expected progress idle timeout error, got %v", err)
+	}
+
+	storedTask, err := taskRepo.FindByTaskID(task.TaskID)
+	if err != nil {
+		t.Fatalf("find task failed: %v", err)
+	}
+	if storedTask.Status != model.VideoTaskFailed {
+		t.Fatalf("expected failed task, got %s", storedTask.Status)
 	}
 }
