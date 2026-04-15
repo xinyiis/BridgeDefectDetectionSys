@@ -144,18 +144,18 @@ log_info "=========================================="
 
 log_info "正在上传视频..."
 # 使用临时文件分离进度条和响应内容
-UPLOAD_RESPONSE=$(curl -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
+UPLOAD_RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
     --max-time 300 \
     -b /tmp/session_cookie.txt \
     -F "video=@$TEST_VIDEO" \
     -F "bridge_id=$BRIDGE_ID" \
     -F "drone_id=$DRONE_ID" \
     -F "user_id=$USER_ID" \
-    -F "pixel_ratio=0.5" \
-    2>/tmp/upload_progress.log)
+    -F "pixel_ratio=0.5")
 
-if [ $? -ne 0 ]; then
-    log_error "视频上传失败"
+CURL_EXIT_CODE=$?
+if [ $CURL_EXIT_CODE -ne 0 ]; then
+    log_error "视频上传失败 (curl exit code: $CURL_EXIT_CODE)"
     echo "$UPLOAD_RESPONSE"
     exit 1
 fi
