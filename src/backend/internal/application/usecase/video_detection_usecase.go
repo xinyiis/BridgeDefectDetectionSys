@@ -176,7 +176,7 @@ func (uc *VideoDetectionUseCase) UploadVideo(req *dto.VideoUploadRequest, curren
 	}, nil
 }
 
-// StartTask 创建分析会话。
+// StartTask 创建分析会话并启动后台处理。
 func (uc *VideoDetectionUseCase) StartTask(taskID string, currentUser *model.User) (*dto.VideoStartResponse, error) {
 	task, err := uc.loadOwnedTask(taskID, currentUser)
 	if err != nil {
@@ -185,6 +185,11 @@ func (uc *VideoDetectionUseCase) StartTask(taskID string, currentUser *model.Use
 
 	if task.Status != model.VideoTaskUploaded {
 		return nil, errors.New("当前任务状态不允许开始分析")
+	}
+
+	// 防止重复启动
+	if _, loaded := uc.running.LoadOrStore(task.TaskID, struct{}{}); loaded {
+		return nil, errors.New("任务已在处理中")
 	}
 
 	task.SessionID = "session_" + uuid.NewString()
@@ -196,10 +201,26 @@ func (uc *VideoDetectionUseCase) StartTask(taskID string, currentUser *model.Use
 	task.ConfirmedDefects = 0
 
 	if err := uc.taskRepo.Update(task); err != nil {
+		uc.running.Delete(task.TaskID) // 回滚
 		return nil, fmt.Errorf("更新任务状态失败: %w", err)
 	}
 
 	uc.tasks.Store(task.TaskID, task)
+
+	// 启动后台处理 goroutine
+	go func() {
+		defer uc.running.Delete(task.TaskID)
+
+		// 创建一个空的 runtime（不需要 WebSocket send）
+		_ = uc.ensureRuntime(task.TaskID, nil)
+
+		// 调用 runTask 处理
+		if err := uc.runTask(task, nil); err != nil {
+			// 错误已经在 runTask 中记录到数据库
+			// 这里只需要记录日志
+			fmt.Printf("[VideoDetection] Task %s failed: %v\n", task.TaskID, err)
+		}
+	}()
 
 	return &dto.VideoStartResponse{
 		TaskID:    task.TaskID,
@@ -519,7 +540,7 @@ func (uc *VideoDetectionUseCase) CancelTask(taskID string, currentUser *model.Us
 	return uc.toTaskResponse(task), nil
 }
 
-// StreamTask 在 WebSocket 建连后开始处理任务。
+// StreamTask 在 WebSocket 建连后更新 send 函数并等待任务完成。
 func (uc *VideoDetectionUseCase) StreamTask(taskID, sessionID string, currentUser *model.User, send func(any) error) error {
 	task, err := uc.loadOwnedTask(taskID, currentUser)
 	if err != nil {
@@ -539,11 +560,9 @@ func (uc *VideoDetectionUseCase) StreamTask(taskID, sessionID string, currentUse
 
 	switch task.Status {
 	case model.VideoTaskReadyToProcess:
-		if _, loaded := uc.running.LoadOrStore(task.TaskID, struct{}{}); loaded {
-			return nil
-		}
-		defer uc.running.Delete(task.TaskID)
-		return uc.runTask(task, send)
+		// 任务已在 StartTask 中启动后台处理，这里只需等待完成
+		<-runtime.done
+		return nil
 	case model.VideoTaskFrameExtracting, model.VideoTaskDispatching, model.VideoTaskQueued:
 		<-runtime.done
 		return nil
