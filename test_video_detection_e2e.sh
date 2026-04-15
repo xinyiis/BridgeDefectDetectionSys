@@ -97,7 +97,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-USER_ID=$(echo "$LOGIN_RESPONSE" | jq -r '.data.user_id // .user_id // empty')
+USER_ID=$(echo "$LOGIN_RESPONSE" | jq -r '.data.id // .data.user_id // .user_id // .id // empty')
 if [ -z "$USER_ID" ]; then
     log_error "无法从登录响应中提取 user_id"
     echo "响应内容: $LOGIN_RESPONSE"
