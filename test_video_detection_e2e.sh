@@ -160,6 +160,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# 调试：打印原始响应
+log_info "原始响应: $UPLOAD_RESPONSE"
+
 TASK_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.data.task_id // .task_id // empty')
 if [ -z "$TASK_ID" ]; then
     log_error "无法从响应中提取 task_id"
