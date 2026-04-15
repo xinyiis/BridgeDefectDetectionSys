@@ -10,7 +10,7 @@ BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 ALGO_URL="${ALGO_URL:-http://localhost:18080}"
 TEST_VIDEO="${1:-}"
 # 使用数据库中实际存在的值
-BRIDGE_ID="${BRIDGE_ID:-1}"      # 数据库中存在 ID: 1-5
+BRIDGE_ID="${BRIDGE_ID:-2}"      # 数据库中存在 ID: 2-11
 DRONE_ID="${DRONE_ID:-3}"        # 数据库中存在 ID: 3, 5, 7, 9, 11
 USERNAME="${USERNAME:-admin}"    # 使用 admin 账户
 PASSWORD="${PASSWORD:-admin123}" # admin 密码
