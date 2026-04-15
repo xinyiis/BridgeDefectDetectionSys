@@ -55,5 +55,6 @@ session:
 cors:
   allow_origins:
     - "http://localhost:5173"      # 前端开发地址
+    - "http://127.0.0.1:5173"      # SSH 隧道/本地回环访问
     - "http://localhost:3000"      # 备用前端地址
   allow_credentials: true           # 允许携带 Cookie（Session 认证必需）
