@@ -143,15 +143,16 @@ log_info "步骤 5: 上传视频并创建任务"
 log_info "=========================================="
 
 log_info "正在上传视频..."
-# 使用临时文件分离进度条和响应内容
-UPLOAD_RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
+# 使用 --progress-bar 将进度输出到 stderr，避免污染 JSON 响应
+UPLOAD_RESPONSE=$(curl -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
     --max-time 300 \
+    --progress-bar \
     -b /tmp/session_cookie.txt \
     -F "video=@$TEST_VIDEO" \
     -F "bridge_id=$BRIDGE_ID" \
     -F "drone_id=$DRONE_ID" \
     -F "user_id=$USER_ID" \
-    -F "pixel_ratio=0.5")
+    -F "pixel_ratio=0.5" 2>&1 | grep -v '^#')
 
 CURL_EXIT_CODE=$?
 if [ $CURL_EXIT_CODE -ne 0 ]; then
@@ -159,9 +160,6 @@ if [ $CURL_EXIT_CODE -ne 0 ]; then
     echo "$UPLOAD_RESPONSE"
     exit 1
 fi
-
-# 调试：打印原始响应
-log_info "原始响应: $UPLOAD_RESPONSE"
 
 TASK_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.data.task_id // .task_id // empty')
 if [ -z "$TASK_ID" ]; then
