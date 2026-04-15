@@ -143,16 +143,16 @@ log_info "步骤 5: 上传视频并创建任务"
 log_info "=========================================="
 
 log_info "正在上传视频..."
-UPLOAD_RESPONSE=$(curl -S -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
+# 使用临时文件分离进度条和响应内容
+UPLOAD_RESPONSE=$(curl -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
     --max-time 300 \
-    --progress-bar \
     -b /tmp/session_cookie.txt \
     -F "video=@$TEST_VIDEO" \
     -F "bridge_id=$BRIDGE_ID" \
     -F "drone_id=$DRONE_ID" \
     -F "user_id=$USER_ID" \
     -F "pixel_ratio=0.5" \
-    2>&1)
+    2>/tmp/upload_progress.log)
 
 if [ $? -ne 0 ]; then
     log_error "视频上传失败"
