@@ -7,7 +7,7 @@ set -e
 
 # ============ 配置区 ============
 BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
-ALGO_URL="${ALGO_URL:-http://localhost:8000}"
+ALGO_URL="${ALGO_URL:-http://localhost:18080}"
 TEST_VIDEO="${1:-}"
 # 使用数据库中实际存在的值
 BRIDGE_ID="${BRIDGE_ID:-1}"      # 数据库中存在 ID: 1-5
