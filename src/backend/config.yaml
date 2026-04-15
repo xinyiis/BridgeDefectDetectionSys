@@ -56,4 +56,6 @@ cors:
   allow_origins:
     - "http://localhost:5173"      # 前端开发地址
     - "http://localhost:3000"      # 备用前端地址
+    - "http://127.0.0.1:5173"      # 127.0.0.1 地址
+    - "http://127.0.0.1:3000"      # 127.0.0.1 备用地址
   allow_credentials: true           # 允许携带 Cookie（Session 认证必需）

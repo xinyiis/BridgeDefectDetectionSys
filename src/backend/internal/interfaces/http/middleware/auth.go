@@ -3,6 +3,8 @@
 package middleware
 
 import (
+	"log"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,17 @@ import (
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/response"
 	"gorm.io/gorm"
 )
+
+// DebugOriginMiddleware 调试中间件，记录请求的 Origin
+func DebugOriginMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			log.Printf("🔍 [CORS Debug] Origin: %s | Path: %s | Method: %s", origin, c.Request.URL.Path, c.Request.Method)
+		}
+		c.Next()
+	}
+}
 
 // CORSMiddleware 创建 CORS 跨域中间件
 // 允许前端（不同端口）访问后端 API

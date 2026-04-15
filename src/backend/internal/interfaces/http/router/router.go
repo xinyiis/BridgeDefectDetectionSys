@@ -65,6 +65,9 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 // setupGlobalMiddleware 配置全局中间件
 // 包括 CORS、Session 等
 func setupGlobalMiddleware(r *gin.Engine, cfg *config.Config) {
+	// 调试中间件（记录 Origin）
+	r.Use(middleware.DebugOriginMiddleware())
+
 	// CORS 跨域中间件
 	r.Use(middleware.CORSMiddleware(cfg))
 
