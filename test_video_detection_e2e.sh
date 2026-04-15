@@ -132,7 +132,9 @@ log_info "步骤 5: 上传视频并创建任务"
 log_info "=========================================="
 
 log_info "正在上传视频..."
-UPLOAD_RESPONSE=$(curl -sf -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
+UPLOAD_RESPONSE=$(curl -S -X POST "$BACKEND_URL/api/v1/detection/video/upload" \
+    --max-time 300 \
+    --progress-bar \
     -b /tmp/session_cookie.txt \
     -F "video=@$TEST_VIDEO" \
     -F "bridge_id=$BRIDGE_ID" \
