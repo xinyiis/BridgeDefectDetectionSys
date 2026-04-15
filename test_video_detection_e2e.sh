@@ -61,7 +61,7 @@ log_info "=========================================="
 
 # 检查后端服务
 log_info "检查后端服务: $BACKEND_URL"
-if curl -sf "$BACKEND_URL/health" > /dev/null 2>&1; then
+if curl -sf "$BACKEND_URL/api/v1/health" > /dev/null 2>&1; then
     log_success "后端服务运行正常"
 else
     log_error "后端服务不可用，请检查服务是否启动"
@@ -71,7 +71,7 @@ fi
 
 # 检查算法服务
 log_info "检查算法服务: $ALGO_URL"
-if curl -sf "$ALGO_URL/health" > /dev/null 2>&1; then
+if curl -sf "$ALGO_URL/docs" > /dev/null 2>&1; then
     log_success "算法服务运行正常"
 else
     log_error "算法服务不可用，请检查服务是否启动"

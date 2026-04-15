@@ -1,10 +1,7 @@
 import os
-# 修复 libgomp 报错：强制设置为 1 或者具体的物理核心数（如 8）
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
-# 禁用 Ultralytics 的某些可能导致冲突的多线程设置
 os.environ["YOLO_VERBOSE"] = "False"
-
 import sys
 import time
 import cv2
@@ -15,6 +12,7 @@ import torch
 import asyncio
 import httpx
 import io
+import importlib.util  # <--- 修正 1：必须显式导入这个用于动态加载
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
@@ -22,38 +20,102 @@ from fastapi import FastAPI, File, UploadFile, Form
 from pydantic import BaseModel
 from PIL import Image
 import supervision as sv
+import uvicorn
 
-# ==========================================================
-# 1. 環境配置與模型加載
-# ==========================================================
 sys.path.insert(0, "/root/miniconda3/lib/python3.12/site-packages/ultralytics")
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sam_package_container = os.path.join(current_dir, "sam")
-if sam_package_container not in sys.path:
-    sys.path.insert(0, sam_package_container)
 
 from ultralytics import YOLO
-import sam3
-from sam3.model_builder import build_sam3_image_model
-from sam3.model.sam3_image_processor import Sam3Processor
 
+# ==========================================
+# 0. 核心配置与路径定义
+# ==========================================
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BPE_PATH = "assets/bpe_simple_vocab_16e6.txt.gz"
 DISEASE_NAMES = ["Crack", "Breakage", "Comb", "Hole", "Reinforcement", "Seepage"]
+# ==========================================
+# 1. 路径定义 (确保指向 sam3 文件夹的上一层)
+# ==========================================
+TEACHER_PARENT = "/root/autodl-tmp/NLP/sam"
+STUDENT_PARENT = "/root/autodl-tmp/efficientsam3/sam3"
 
+def safe_load_student():
+    print("正在加载蒸馏版 (Student) 模型环境...")
+    # 强制清理
+    if "sam3" in sys.modules:
+        del sys.modules["sam3"]
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("sam3."):
+            del sys.modules[mod]
+    
+    # 暂时切换路径进行模块抓取
+    sys.path.insert(0, STUDENT_PARENT)
+    try:
+        from sam3.model_builder import build_efficientsam3_image_model
+        from sam3.model.sam3_image_processor import Sam3Processor
+        return build_efficientsam3_image_model, Sam3Processor
+    finally:
+        sys.path.pop(0)
+
+def safe_load_teacher():
+    print("正在加载原版 (Teacher) 模型环境...")
+    if "sam3" in sys.modules:
+        del sys.modules["sam3"]
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("sam3."):
+            del sys.modules[mod]
+            
+    sys.path.insert(0, TEACHER_PARENT)
+    try:
+        from sam3.model_builder import build_sam3_image_model
+        from sam3.model.sam3_image_processor import Sam3Processor
+        return build_sam3_image_model, Sam3Processor
+    finally:
+        sys.path.pop(0)
+
+# ==========================================
+# 2. 执行初始化 (关键点：初始化时必须在路径上下文内)
+# ==========================================
+
+# --- A. 初始化 Student ---
+sys.path.insert(0, STUDENT_PARENT) # <--- 必须在这里手动插入
+if "sam3" in sys.modules: del sys.modules["sam3"] # 确保 clean
+build_fn_student, proc_cls_student = safe_load_student()
+
+print("正在初始化 Student 权重...")
+sam3_model_student = build_fn_student(
+    checkpoint_path="/root/autodl-tmp/efficientsam3/output/efficient_sam3_repvit_m1_1_mobileclip_s1.pth",
+    bpe_path=BPE_PATH,
+    device=DEVICE,
+    backbone_type="repvit", 
+    model_name="m1_1",
+    enable_inst_interactivity=True
+)
+sam3_processor_student = proc_cls_student(sam3_model_student, confidence_threshold=0.3, device=DEVICE)
+sys.path.pop(0) # 初始化完了再弹出
+
+# --- B. 初始化 Teacher ---
+sys.path.insert(0, TEACHER_PARENT) # <--- 切换到 Teacher 路径
+if "sam3" in sys.modules: del sys.modules["sam3"]
+build_fn_teacher, proc_cls_teacher = safe_load_teacher()
+
+print("正在初始化 Teacher 权重...")
+sam3_model_teacher = build_fn_teacher(
+    checkpoint_path="weights/sam3.pt",
+    bpe_path=BPE_PATH,
+    device=DEVICE,
+    enable_inst_interactivity=True
+)
+sam3_processor_teacher = proc_cls_teacher(sam3_model_teacher, confidence_threshold=0.3, device=DEVICE)
+sys.path.pop(0)
 # 加載 YOLO（新版优化：启动时预加载到 GPU）
 MODELS = {
     "baseline": YOLO("xe/best.pt").to(DEVICE),
     "my_trained": YOLO("weights/last.pt").to(DEVICE)
 }
 
-# 加載 SAM3
-sam3_model = build_sam3_image_model(
-    checkpoint_path="weights/sam3.pt",
-    bpe_path="assets/bpe_simple_vocab_16e6.txt.gz",
-    device=DEVICE,
-    enable_inst_interactivity=True
-)
-sam3_processor = Sam3Processor(sam3_model, confidence_threshold=0.3, device=DEVICE)
+
+
+
 
 # ==========================================
 # 2. 異步隊列模型定義
@@ -246,8 +308,6 @@ async def handle_preprocess(p):
 
 # 在 handle_detect 中加入强制性能优化
 async def handle_detect(p):
-    # 🔥 修复：移除 to_thread 避免 CUDA 上下文切换（导致 800ms 延迟）
-    # 单 worker 串行消费，直接在主线程执行不会阻塞
     return _sync_detect_logic(p)
 
 def _sync_detect_logic(p):
@@ -288,22 +348,22 @@ def _sync_detect_logic(p):
         })
     t_post_process = time.time()
 
-    # --- 5. 渲染 ---
-    plot_img = results.plot()
-    _, buffer = cv2.imencode('.jpg', plot_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-    plot_b64 = base64.b64encode(buffer).decode('utf-8')
-    t_render = time.time()
+    # # --- 5. 渲染 ---
+    # plot_img = results.plot()
+    # _, buffer = cv2.imencode('.jpg', plot_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    # plot_b64 = base64.b64encode(buffer).decode('utf-8')
+    # t_render = time.time()
 
     return {
         "model_used": p['model_name'],
         "yolo_bboxes": bboxes,
-        "image_results": plot_b64
+        #"image_results": plot_b64
     }, {
         "decode_ms": (t_decode - t_start) * 1000,
         "model_prepare_ms": (t_model_ready - t_decode) * 1000,
         "pure_infer_ms": (t_infer_end - t_infer_start) * 1000,
         "post_process_ms": (t_post_process - t_infer_end) * 1000,
-        "render_ms": (t_render - t_post_process) * 1000,
+        #"render_ms": (t_render - t_post_process) * 1000,
         "infer_ms": (t_infer_end - t_decode) * 1000
     }
 
@@ -313,48 +373,67 @@ async def handle_segment(p):
     img_cv2 = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
     h, w = img_cv2.shape[:2]
 
-    # SAM3 特徵提取
+    # 根据请求选择模型
+    if p.get('model_type') == "teacher":
+        model = sam3_model_teacher
+        processor = sam3_processor_teacher
+    else:
+        model = sam3_model_student
+        processor = sam3_processor_student
+
+    # SAM3 特徵提取 (Feature Encoding)
     img_pil = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-    inference_state = sam3_processor.set_image(img_pil)
+    inference_state = processor.set_image(img_pil)
     t1 = time.time()
 
-    # 解析 BBOX 並推理
+    # 解析 BBOX (从 YOLO 归一化坐标转像素坐标)
     bboxes_data = json.loads(p['bboxes_json'])
     input_boxes = []
     input_class_ids = []
     for item in bboxes_data:
         xc, yc, bw, bh = item['yolo_coords']
+        # 转为 [x1, y1, x2, y2]
         input_boxes.append([(xc-bw/2)*w, (yc-bh/2)*h, (xc+bw/2)*w, (yc+bh/2)*h])
         input_class_ids.append(item['class_idx'])
 
     if not input_boxes:
         return {"fusion_image": cv2_to_base64(img_cv2), "individual_masks": []}, {"total_ms": (time.time()-t0)*1000}
 
-    masks, _, _ = sam3_model.predict_inst(
-        inference_state, box=np.array(input_boxes, dtype=np.float32), multimask_output=False
+    # 多 Box 同时推理 (Batch Inference)
+    masks, scores, _ = model.predict_inst(
+        inference_state, 
+        box=np.array(input_boxes, dtype=np.float32), 
+        multimask_output=False
     )
     t2 = time.time()
 
-    # 渲染（新版优化：兼容性修复）
+    # 结果渲染准备
     if masks.ndim == 4:
         masks = masks.squeeze(1)
-
-    # 兼容性修復：判斷 masks 類型
-    if hasattr(masks, "cpu"):
-        masks_np = masks.cpu().numpy()
-    else:
-        masks_np = masks
-
-    detections = sv.Detections(xyxy=np.array(input_boxes), mask=masks_np.astype(bool), class_id=np.array(input_class_ids))
+    
+    masks_np = masks.cpu().numpy() if hasattr(masks, "cpu") else masks
+    
+    # 使用 Supervision 进行融合渲染
+    detections = sv.Detections(
+        xyxy=np.array(input_boxes, dtype=np.float32), 
+        mask=masks_np.astype(bool), 
+        class_id=np.array(input_class_ids)
+    )
+    
     mask_ann = sv.MaskAnnotator(opacity=p['alpha'])
+    # 将 PIL 转 OpenCV 格式进行标注
     annotated = mask_ann.annotate(scene=cv2.cvtColor(img_cv2, cv2.COLOR_BGR2RGB), detections=detections)
-
-    # Individual Masks
+    
+    # 生成个体 Mask (黑白图片)
     individual_masks = []
     for i in range(len(masks_np)):
         m255 = (masks_np[i] * 255).astype(np.uint8)
+        # 获取类别名称
+        cls_name = DISEASE_NAMES[input_class_ids[i]] if input_class_ids[i] < len(DISEASE_NAMES) else "Unknown"
+        
         individual_masks.append({
-            "box_index": bboxes_data[i]['box_id'],
+            "box_index": bboxes_data[i].get('box_id', i),
+            "class_name": cls_name,
             "mask_base64": cv2_to_base64(m255)
         })
 
@@ -391,13 +470,20 @@ async def api_detect(callback_url: str = Form(...), request_id: str = Form(...),
     return {"status": "accepted", "request_id": request_id}
 
 @app.post("/algo/segment", tags=["3.分割"])
-async def api_segment(callback_url: str = Form(...), request_id: str = Form(...), bboxes_json: str = Form(...), alpha: float = Form(0.5), file: UploadFile = File(...)):
+async def api_segment(
+    bboxes_json: str = Form(...),
+    alpha: float = Form(0.5),
+    model_type: str = Form("student"),
+    file: UploadFile = File(...),
+):
     img_b64 = base64.b64encode(await file.read()).decode()
-    await task_queue.put(AsyncTask(
-        task_type="segment", request_id=request_id, callback_url=callback_url,
-        payload={"bboxes_json": bboxes_json, "alpha": alpha, "img_b64": img_b64}, enter_time=time.time()
-    ))
-    return {"status": "accepted", "request_id": request_id}
+    result, _ = await handle_segment({
+        "bboxes_json": bboxes_json,
+        "alpha": alpha,
+        "img_b64": img_b64,
+        "model_type": model_type,
+    })
+    return {"status": "success", **result}
 
 @app.post("/algo/video/frames/detect", tags=["4.視頻幀異步檢測"])
 async def api_video_frame_detect(req: VideoFrameDetectRequest):
@@ -465,6 +551,7 @@ def cv2_to_base64(img):
     _, buffer = cv2.imencode('.jpg', img)
     return base64.b64encode(buffer).decode('utf-8')
 
+
 # 新版优化：启动诊断
 print(f"\n{'='*50}")
 print(f"🚀 橋梁算法中台啟動診斷")
@@ -481,6 +568,7 @@ print(f"YOLO my_trained 設備: {MODELS['my_trained'].device}")
 print(f"SAM3 設備: {DEVICE}")
 print(f"{'='*50}\n")
 
+
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=18080)
