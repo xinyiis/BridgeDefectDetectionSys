@@ -61,7 +61,7 @@ func (s *sequenceFrameExtractor) ExtractFramesStream(videoPath, outputDir string
 
 type stubPythonService struct{}
 
-func (s *stubPythonService) DetectDefect(string, string, float64) (*service.PythonDetectionResult, error) {
+func (s *stubPythonService) DetectDefect(string, string, string, float64) (*service.PythonDetectionResult, error) {
 	return nil, nil
 }
 
@@ -95,7 +95,7 @@ func (s *stubPythonService) EnqueueVideoFrameDetect(req *service.VideoFrameDetec
 
 type streamingPythonService struct{}
 
-func (s *streamingPythonService) DetectDefect(string, string, float64) (*service.PythonDetectionResult, error) {
+func (s *streamingPythonService) DetectDefect(string, string, string, float64) (*service.PythonDetectionResult, error) {
 	return nil, nil
 }
 

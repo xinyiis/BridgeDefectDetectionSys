@@ -10,6 +10,7 @@ type DetectionUploadRequest struct {
 	Image      *multipart.FileHeader `form:"image" binding:"required"`            // 图片文件
 	BridgeID   uint                  `form:"bridge_id" binding:"required"`        // 关联桥梁ID
 	ModelName  string                `form:"model_name" binding:"required"`       // 模型名称/版本
+	ModelType  string                `form:"model_type"`                          // 分割模型类型（student/teacher）
 	PixelRatio float64               `form:"pixel_ratio" binding:"required,gt=0"` // 像素实际系数
 }
 

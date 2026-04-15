@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
 )
+
+const defaultSegmentModelType = "student"
 
 // HTTPPythonService Python服务HTTP实现
 // 通过HTTP请求调用真实的Python AI服务
@@ -35,8 +38,9 @@ func NewHTTPPythonService(baseURL string) *HTTPPythonService {
 }
 
 // DetectDefect 调用Python服务进行缺陷检测
-func (s *HTTPPythonService) DetectDefect(imagePath, modelName string, pixelRatio float64) (*service.PythonDetectionResult, error) {
+func (s *HTTPPythonService) DetectDefect(imagePath, modelName, segmentModelType string, pixelRatio float64) (*service.PythonDetectionResult, error) {
 	_ = pixelRatio
+	segmentModelType = normalizeSegmentModelType(segmentModelType)
 
 	detectResult, err := s.Detect(imagePath, &service.DetectRequest{
 		ModelName: modelName,
@@ -80,6 +84,7 @@ func (s *HTTPPythonService) DetectDefect(imagePath, modelName string, pixelRatio
 	segmentResult, err := s.Segment(imagePath, &service.SegmentRequest{
 		BBoxesJSON: string(bboxesJSON),
 		Alpha:      0.5,
+		ModelType:  segmentModelType,
 	})
 	if err != nil {
 		return nil, err
@@ -186,9 +191,14 @@ func (s *HTTPPythonService) Preprocess(imagePath string, mode string) (*service.
 // Segment 调用 Python 分割接口。
 func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentRequest) (*service.SegmentResult, error) {
 	body, contentType, err := buildMultipartRequest(imagePath, func(writer *multipart.Writer) error {
+		modelType := defaultSegmentModelType
 		if req == nil {
+			if err := writer.WriteField("model_type", modelType); err != nil {
+				return err
+			}
 			return nil
 		}
+		modelType = normalizeSegmentModelType(req.ModelType)
 		if req.BBoxesJSON != "" {
 			if err := writer.WriteField("bboxes_json", req.BBoxesJSON); err != nil {
 				return err
@@ -199,7 +209,7 @@ func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentReques
 				return err
 			}
 		}
-		return nil
+		return writer.WriteField("model_type", modelType)
 	})
 	if err != nil {
 		return nil, err
@@ -228,6 +238,14 @@ func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentReques
 	}
 
 	return &result, nil
+}
+
+func normalizeSegmentModelType(modelType string) string {
+	candidate := strings.TrimSpace(modelType)
+	if candidate == "" {
+		return defaultSegmentModelType
+	}
+	return candidate
 }
 
 // EnqueueVideoFrameDetect 提交视频单帧异步检测入队请求。

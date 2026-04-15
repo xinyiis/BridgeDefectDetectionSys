@@ -21,7 +21,7 @@ func NewMockPythonService() *MockPythonService {
 
 // DetectDefect 模拟缺陷检测
 // 返回随机生成的1-3个缺陷，用于测试多缺陷处理逻辑
-func (s *MockPythonService) DetectDefect(imagePath, modelName string, pixelRatio float64) (*service.PythonDetectionResult, error) {
+func (s *MockPythonService) DetectDefect(imagePath, modelName, segmentModelType string, pixelRatio float64) (*service.PythonDetectionResult, error) {
 	// 模拟处理时间
 	time.Sleep(100 * time.Millisecond)
 

@@ -12,12 +12,13 @@ type PythonService interface {
 	// DetectDefect 检测缺陷
 	// 参数：
 	//   - imagePath: 图片路径
-	//   - modelName: 模型名称/版本
+	//   - modelName: 检测模型名称/版本
+	//   - segmentModelType: 分割模型类型（student/teacher）
 	//   - pixelRatio: 像素实际系数（米/像素）
 	// 返回：
 	//   - *PythonDetectionResult: 检测结果（包含多个缺陷）
 	//   - error: 错误信息
-	DetectDefect(imagePath, modelName string, pixelRatio float64) (*PythonDetectionResult, error)
+	DetectDefect(imagePath, modelName, segmentModelType string, pixelRatio float64) (*PythonDetectionResult, error)
 
 	// Detect 调用 YOLO 目标检测接口。
 	Detect(imagePath string, req *DetectRequest) (*DetectResult, error)
@@ -72,6 +73,7 @@ type DetectRequest struct {
 type SegmentRequest struct {
 	BBoxesJSON string  // bbox JSON 字符串
 	Alpha      float64 // 掩码透明度
+	ModelType  string  // 分割模型类型（student/teacher）
 }
 
 // PreprocessResult 图像预处理响应。

@@ -37,6 +37,7 @@ func NewDetectionHandler(detectionUseCase *usecase.DetectionUseCase) *DetectionH
 // @Param image formData file true "图片文件"
 // @Param bridge_id formData int true "桥梁ID"
 // @Param model_name formData string true "模型名称"
+// @Param model_type formData string false "分割模型类型（student/teacher）"
 // @Param pixel_ratio formData number true "像素实际系数"
 // @Success 200 {object} response.Response
 // @Router /api/v1/detection/upload [post]

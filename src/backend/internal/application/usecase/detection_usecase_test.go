@@ -25,11 +25,13 @@ import (
 )
 
 type detectionPythonServiceStub struct {
-	receivedImagePath string
+	receivedImagePath        string
+	receivedSegmentModelType string
 }
 
-func (s *detectionPythonServiceStub) DetectDefect(imagePath, modelName string, pixelRatio float64) (*service.PythonDetectionResult, error) {
+func (s *detectionPythonServiceStub) DetectDefect(imagePath, modelName, segmentModelType string, pixelRatio float64) (*service.PythonDetectionResult, error) {
 	s.receivedImagePath = imagePath
+	s.receivedSegmentModelType = segmentModelType
 	return &service.PythonDetectionResult{
 		Success:      true,
 		TotalDefects: 1,
@@ -127,6 +129,9 @@ func TestDetectionUseCaseUploadAndDetectCalculatesPhysicalDimensions(t *testing.
 	}
 	if pythonService.receivedImagePath == "" {
 		t.Fatalf("python service did not receive image path")
+	}
+	if pythonService.receivedSegmentModelType != "student" {
+		t.Fatalf("expected default segment model type student, got %q", pythonService.receivedSegmentModelType)
 	}
 	if _, err := os.Stat(pythonService.receivedImagePath); err != nil {
 		t.Fatalf("expected resolved image path to exist, got err: %v", err)

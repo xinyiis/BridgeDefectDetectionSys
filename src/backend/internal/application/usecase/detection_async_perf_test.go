@@ -29,7 +29,7 @@ type perfPythonServiceStub struct {
 	defectCount int
 }
 
-func (s *perfPythonServiceStub) DetectDefect(imagePath, modelName string, pixelRatio float64) (*service.PythonDetectionResult, error) {
+func (s *perfPythonServiceStub) DetectDefect(imagePath, modelName, segmentModelType string, pixelRatio float64) (*service.PythonDetectionResult, error) {
 	time.Sleep(s.detectDelay)
 
 	defects := make([]service.DefectDetection, 0, s.defectCount)
@@ -337,7 +337,7 @@ func runLegacySyncLikeFlow(uc *DetectionUseCase, req *dto.DetectionUploadRequest
 		return nil, err
 	}
 
-	pythonResult, err := uc.pythonService.DetectDefect(resolvedImagePath, req.ModelName, req.PixelRatio)
+	pythonResult, err := uc.pythonService.DetectDefect(resolvedImagePath, req.ModelName, req.ModelType, req.PixelRatio)
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,8 @@ import (
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
 )
 
+const defaultSegmentModelType = "student"
+
 // DetectionUseCase 检测用例
 // 处理图片上传检测业务流程
 type DetectionUseCase struct {
@@ -116,7 +118,17 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 	}
 
 	// 3. 调用Python服务检测（返回多个缺陷）
-	pythonResult, err := uc.pythonService.DetectDefect(resolvedImagePath, req.ModelName, req.PixelRatio)
+	segmentModelType := strings.TrimSpace(req.ModelType)
+	if segmentModelType == "" {
+		segmentModelType = defaultSegmentModelType
+	}
+
+	pythonResult, err := uc.pythonService.DetectDefect(
+		resolvedImagePath,
+		req.ModelName,
+		segmentModelType,
+		req.PixelRatio,
+	)
 	if err != nil {
 		// 回滚：删除临时图片
 		uc.fileService.DeleteFile(tempImagePath)

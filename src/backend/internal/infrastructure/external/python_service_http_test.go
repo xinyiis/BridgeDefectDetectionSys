@@ -45,6 +45,9 @@ func TestHTTPPythonServiceSegmentUsesBBoxesJSONField(t *testing.T) {
 		if got := r.FormValue("alpha"); got != "0.50" {
 			t.Fatalf("unexpected alpha: %q", got)
 		}
+		if got := r.FormValue("model_type"); got != "teacher" {
+			t.Fatalf("unexpected model_type: %q", got)
+		}
 
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -65,6 +68,7 @@ func TestHTTPPythonServiceSegmentUsesBBoxesJSONField(t *testing.T) {
 	result, err := pythonService.Segment(imagePath, &domainservice.SegmentRequest{
 		BBoxesJSON: expectedBBoxes,
 		Alpha:      0.5,
+		ModelType:  "teacher",
 	})
 	if err != nil {
 		t.Fatalf("segment request failed: %v", err)
@@ -119,6 +123,9 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 			if got := r.FormValue("alpha"); got != "0.50" {
 				t.Fatalf("unexpected alpha: %q", got)
 			}
+			if got := r.FormValue("model_type"); got != "teacher" {
+				t.Fatalf("unexpected model_type: %q", got)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(segmentResponse))
 		default:
@@ -128,7 +135,7 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 	defer server.Close()
 
 	pythonService := NewHTTPPythonService(server.URL)
-	result, err := pythonService.DetectDefect(imagePath, "baseline", 0.1)
+	result, err := pythonService.DetectDefect(imagePath, "baseline", "teacher", 0.1)
 	if err != nil {
 		t.Fatalf("detect defect failed: %v", err)
 	}
@@ -159,6 +166,46 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 	}
 	if result.Defects[0].Confidence != 0.93 {
 		t.Fatalf("unexpected confidence: %v", result.Defects[0].Confidence)
+	}
+}
+
+func TestHTTPPythonServiceDetectDefectDefaultsSegmentModelType(t *testing.T) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	imagePath := filepath.Join(tmpDir, "sample.jpg")
+	if err := os.WriteFile(imagePath, []byte("fake-image"), 0644); err != nil {
+		t.Fatalf("write temp image: %v", err)
+	}
+
+	const detectResponse = `{"status":"success","model_used":"baseline","yolo_bboxes":[{"box_id":0,"class_idx":0,"class_name":"Crack","yolo_coords":[0.5,0.5,0.3,0.1],"confidence":0.93}],"image_results":"detect-image"}`
+	const segmentResponse = `{"status":"success","fusion_image":"segment-image","individual_masks":[]}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Helper()
+
+		switch r.URL.Path {
+		case "/algo/detect":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(detectResponse))
+		case "/algo/segment":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse segment multipart form: %v", err)
+			}
+			if got := r.FormValue("model_type"); got != "student" {
+				t.Fatalf("expected default model_type student, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(segmentResponse))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	pythonService := NewHTTPPythonService(server.URL)
+	if _, err := pythonService.DetectDefect(imagePath, "baseline", "", 0.1); err != nil {
+		t.Fatalf("detect defect failed: %v", err)
 	}
 }
 

@@ -45,7 +45,7 @@ type stubPythonService struct {
 	onEnqueue func(req *service.VideoFrameDetectEnqueueRequest)
 }
 
-func (s *stubPythonService) DetectDefect(string, string, float64) (*service.PythonDetectionResult, error) {
+func (s *stubPythonService) DetectDefect(string, string, string, float64) (*service.PythonDetectionResult, error) {
 	return nil, nil
 }
 
