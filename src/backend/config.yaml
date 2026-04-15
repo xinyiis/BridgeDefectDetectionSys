@@ -40,7 +40,7 @@ video_detection:
 
 # 文件上传配置
 upload:
-  base_dir: "/autodl-tmp/NLP/source" # 媒体文件根目录（服务器绝对路径）
+  base_dir: "/root/autodl-tmp/NLP/source" # 媒体文件根目录（服务器绝对路径）
   image_dir: "images"              # 原始图片子目录（相对 base_dir）
   result_dir: "results"            # 检测结果子目录（相对 base_dir）
   max_size: 10                     # 最大文件大小（MB）
