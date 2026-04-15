@@ -177,9 +177,9 @@ if ! echo "$DETECT_RESPONSE" | jq empty 2>/dev/null; then
     exit 1
 fi
 
-# 检查响应码
+# 检查响应码（兼容 code=0 与 code=200 两种成功语义）
 RESPONSE_CODE=$(echo "$DETECT_RESPONSE" | jq -r '.code // empty')
-if [ "$RESPONSE_CODE" != "0" ]; then
+if [ "$RESPONSE_CODE" != "0" ] && [ "$RESPONSE_CODE" != "200" ]; then
     ERROR_MSG=$(echo "$DETECT_RESPONSE" | jq -r '.message // "未知错误"')
     log_error "检测失败: $ERROR_MSG"
     echo "完整响应: $DETECT_RESPONSE"

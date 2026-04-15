@@ -1,0 +1,60 @@
+name: contract-video-async-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/backend/**"
+      - ".omx/contracts/**"
+      - "src/backend/internal/interfaces/http/handler/video_detection_handler_test.go"
+      - "src/backend/internal/application/usecase/video_detection_usecase_test.go"
+  push:
+    branches: [ main, master ]
+    paths:
+      - "src/backend/**"
+      - ".omx/contracts/**"
+      - "doc/前端异步视频流后端支持契约_v1.md"
+
+jobs:
+  contract-video-async-gate:
+    name: contract-video-async-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/backend/go.mod
+
+      - name: Validate contract presence
+        run: |
+          test -f .omx/contracts/video-async/v1/contract.yaml
+          test -f .omx/contracts/video-async/CHANGELOG.md
+
+      - name: Semantic contract check
+        run: |
+          if command -v omx >/dev/null 2>&1; then
+            omx contract check .omx/contracts/video-async/v1/contract.yaml
+          else
+            ruby -e '
+              require "yaml"
+              c = YAML.load_file(".omx/contracts/video-async/v1/contract.yaml")
+              raise "authoritative_source must be true" unless c["authoritative_source"] == true
+              raise "required_check mismatch" unless c.dig("ci_gate", "required_check") == "contract-video-async-gate"
+              %w[http websocket state_consistency deduplication race_conditions timeouts].each do |k|
+                raise "missing key: #{k}" unless c.key?(k)
+              end
+              puts "semantic fallback check passed"
+            '
+          fi
+
+      - name: Run timeout and race tests
+        working-directory: src/backend
+        run: |
+          go test ./internal/application/usecase -run "TestVideoDetectionUseCase_QueuedTimeoutFailsTask|TestVideoDetectionUseCase_ProgressIdleTimeoutFailsTask" -count=1
+
+      - name: Run websocket e2e handler test
+        working-directory: src/backend
+        run: |
+          go test ./internal/interfaces/http/handler -run "TestVideoUserFlowE2E_WithSyntheticVideoAndWebSocket" -count=1

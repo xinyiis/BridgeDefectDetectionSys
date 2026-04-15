@@ -113,6 +113,14 @@ MODELS = {
     "my_trained": YOLO("weights/last.pt").to(DEVICE)
 }
 
+# ==========================================
+# 1.1 異步與回調配置
+# ==========================================
+ALGO_QUEUE_MAXSIZE = int(os.getenv("ALGO_QUEUE_MAXSIZE", "0"))  # 0 表示無界
+ALGO_WORKER_COUNT = max(1, int(os.getenv("ALGO_WORKER_COUNT", "1")))
+CALLBACK_TIMEOUT_SEC = float(os.getenv("CALLBACK_TIMEOUT_SEC", "5"))
+CALLBACK_RETRY_MAX = max(1, int(os.getenv("CALLBACK_RETRY_MAX", "3")))
+CALLBACK_RETRY_BACKOFF_MS = int(os.getenv("CALLBACK_RETRY_BACKOFF_MS", "500"))
 
 
 
@@ -120,7 +128,11 @@ MODELS = {
 # ==========================================
 # 2. 異步隊列模型定義
 # ==========================================
-task_queue = asyncio.Queue()
+if ALGO_QUEUE_MAXSIZE > 0:
+    task_queue = asyncio.Queue(maxsize=ALGO_QUEUE_MAXSIZE)
+else:
+    task_queue = asyncio.Queue()
+worker_tasks: List[asyncio.Task] = []
 
 class AsyncTask(BaseModel):
     task_type: str  # "preprocess", "detect", "segment", "video_frame_detect"
@@ -148,26 +160,39 @@ def normalize_frame_ref(frame_ref: str) -> str:
 def build_callback_url(callback_base_url: str, event: str) -> str:
     return callback_base_url.rstrip("/") + "/" + event
 
-async def post_callback(client: httpx.AsyncClient, url: str, payload: Dict[str, Any]) -> None:
-    try:
-        await client.post(url, json=payload)
-    except Exception as callback_error:
-        print(f"⚠️ 回調失敗 {url}: {callback_error}")
+async def post_callback(client: httpx.AsyncClient, url: str, payload: Dict[str, Any]) -> bool:
+    for attempt in range(1, CALLBACK_RETRY_MAX + 1):
+        try:
+            resp = await client.post(url, json=payload)
+            if 200 <= resp.status_code < 300:
+                return True
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as callback_error:
+            if attempt == CALLBACK_RETRY_MAX:
+                print(f"⚠️ 回調最終失敗 {url}: {callback_error} | payload.request_id={payload.get('request_id')}")
+                return False
+            await asyncio.sleep((CALLBACK_RETRY_BACKOFF_MS / 1000.0) * attempt)
+    return False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 啟動後台 Worker
-    worker_task = asyncio.create_task(algo_worker())
+    # 啟動後台 Worker（可配置多 worker）
+    for idx in range(ALGO_WORKER_COUNT):
+        worker_tasks.append(asyncio.create_task(algo_worker(worker_id=idx + 1)))
     yield
-    worker_task.cancel()
+    for t in worker_tasks:
+        t.cancel()
+    await asyncio.gather(*worker_tasks, return_exceptions=True)
+    worker_tasks.clear()
 
 app = FastAPI(title="橋梁算法中台 - 異步隊列全功能版（合并版）", lifespan=lifespan)
 
 # ==========================================
 # 3. 核心：後台消費 Worker (含詳細審計打印)
 # ==========================================
-async def algo_worker():
-    async with httpx.AsyncClient() as client:
+async def algo_worker(worker_id: int = 1):
+    timeout = httpx.Timeout(CALLBACK_TIMEOUT_SEC, connect=CALLBACK_TIMEOUT_SEC)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         while True:
             task: AsyncTask = await task_queue.get()
             t_start = time.time()
@@ -183,7 +208,7 @@ async def algo_worker():
                     result, detail_times = await handle_segment(task.payload)
                 elif task.task_type == "video_frame_detect":
                     # 视频帧检测：先回调 frame-started
-                    await post_callback(client, build_callback_url(task.payload["callback_base_url"], "frame-started"), {
+                    started_ok = await post_callback(client, build_callback_url(task.payload["callback_base_url"], "frame-started"), {
                         "request_id": task.request_id,
                         "task_id": task.payload["task_id"],
                         "frame_no": task.payload["frame_no"],
@@ -191,6 +216,8 @@ async def algo_worker():
                         "status": "processing",
                         "started_at": datetime.now(timezone.utc).isoformat()
                     })
+                    if not started_ok:
+                        print(f"⚠️ frame-started 回調失敗，繼續處理: request_id={task.request_id}")
                     result, detail_times = await handle_detect(task.payload)
                 else:
                     raise ValueError(f"不支持的任務類型: {task.task_type}")
@@ -200,8 +227,9 @@ async def algo_worker():
 
                 # --- 核心：格式化打印報表 ---
                 print("\n" + "—"*45)
-                print(f"🕵️  算法性能審計 | 任務: {task.task_type.upper()}")
+                print(f"🕵️  算法性能審計 | 任務: {task.task_type.upper()} | Worker: {worker_id}")
                 print(f"  ID: {task.request_id}")
+                print(f"  0. 當前隊列長度:        {task_queue.qsize()}")
                 print(f"  1. 排隊等待 (Queue):    {q_latency:.2f} ms")
                 print(f"  2. 圖像解碼 (Decode):   {detail_times.get('decode_ms', 0):.2f} ms")
 
@@ -239,11 +267,18 @@ async def algo_worker():
                         "frame_ref": task.payload["frame_ref"],
                         "yolo_bboxes": result.get("yolo_bboxes", [])
                     }
-                    await post_callback(
+                    result_ok = await post_callback(
                         client,
                         build_callback_url(task.payload["callback_base_url"], "frame-result"),
                         callback_payload
                     )
+                    if not result_ok:
+                        # 兜底：避免後端長時間停留 processing，顯式標記任務失敗
+                        await post_callback(client, build_callback_url(task.payload["callback_base_url"], "task-failed"), {
+                            "task_id": task.payload["task_id"],
+                            "status": "failed",
+                            "error_message": f"frame-result callback failed: {task.request_id}"
+                        })
                 else:
                     # 普通任务：回调原有格式
                     callback_payload = {
@@ -257,12 +292,12 @@ async def algo_worker():
                         },
                         "results": result
                     }
-                    await client.post(task.callback_url, json=callback_payload)
+                    await post_callback(client, task.callback_url, callback_payload)
 
             except Exception as e:
                 print(f"❌ 任務失敗: {str(e)}")
                 if task.task_type == "video_frame_detect":
-                    await post_callback(client, build_callback_url(task.payload["callback_base_url"], "frame-result"), {
+                    failed_result_ok = await post_callback(client, build_callback_url(task.payload["callback_base_url"], "frame-result"), {
                         "request_id": task.request_id,
                         "task_id": task.payload.get("task_id", ""),
                         "frame_no": task.payload.get("frame_no", 0),
@@ -271,6 +306,12 @@ async def algo_worker():
                         "frame_ref": task.payload.get("frame_ref", ""),
                         "error_message": str(e)
                     })
+                    if not failed_result_ok:
+                        await post_callback(client, build_callback_url(task.payload["callback_base_url"], "task-failed"), {
+                            "task_id": task.payload.get("task_id", ""),
+                            "status": "failed",
+                            "error_message": f"frame exception and callback failed: {task.request_id}: {str(e)}"
+                        })
             finally:
                 task_queue.task_done()
 
@@ -308,14 +349,27 @@ async def handle_preprocess(p):
 
 # 在 handle_detect 中加入强制性能优化
 async def handle_detect(p):
-    return _sync_detect_logic(p)
+    # 把同步推理挪到 thread，避免長時間阻塞 event loop（導致回調/入隊接口飢餓）
+    return await asyncio.to_thread(_sync_detect_logic, p)
 
 def _sync_detect_logic(p):
     t_start = time.time()
 
-    # --- 1. 解码 ---
-    img_bytes = base64.b64decode(p['img_b64'])
-    img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+    # --- 1. 解码 / 讀取 ---
+    if p.get("img_b64"):
+        img_bytes = base64.b64decode(p["img_b64"])
+        img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+    elif p.get("frame_ref"):
+        frame_path = normalize_frame_ref(p["frame_ref"])
+        img = cv2.imread(frame_path)
+        if img is None:
+            raise ValueError(f"frame_ref decode failed: {frame_path}")
+    else:
+        raise ValueError("missing img_b64 or frame_ref")
+
+    if img is None:
+        raise ValueError("image decode failed")
+
     h, w = img.shape[:2]
     if max(h, w) > 1280:
         scale = 1280 / max(h, w)
@@ -461,11 +515,25 @@ async def api_preprocess(callback_url: str = Form(...), request_id: str = Form(.
     return {"status": "accepted", "request_id": request_id}
 
 @app.post("/algo/detect", tags=["2.檢測"])
-async def api_detect(callback_url: str = Form(...), request_id: str = Form(...), model_name: str = Form("my_trained"), conf: float = Form(0.25), file: UploadFile = File(...)):
+async def api_detect(
+    file: UploadFile = File(...),
+    model_name: str = Form("my_trained"),
+    conf: float = Form(0.25),
+    callback_url: Optional[str] = Form(None),
+    request_id: Optional[str] = Form(None),
+):
     img_b64 = base64.b64encode(await file.read()).decode()
+    payload = {"model_name": model_name, "conf": conf, "img_b64": img_b64}
+
+    # 向后兼容：若未提供 callback_url/request_id，则走同步返回模式（供后端图片检测链路使用）
+    if not callback_url or not request_id:
+        result, _ = await handle_detect(payload)
+        return {"status": "success", **result}
+
+    # 异步模式：提供 callback 参数时走队列回调链路
     await task_queue.put(AsyncTask(
         task_type="detect", request_id=request_id, callback_url=callback_url,
-        payload={"model_name": model_name, "conf": conf, "img_b64": img_b64}, enter_time=time.time()
+        payload=payload, enter_time=time.time()
     ))
     return {"status": "accepted", "request_id": request_id}
 
@@ -496,21 +564,6 @@ async def api_video_frame_detect(req: VideoFrameDetectRequest):
             "error_message": "frame_ref not accessible"
         }
 
-    def read_frame_bytes() -> bytes:
-        with open(frame_path, "rb") as f:
-            return f.read()
-
-    try:
-        frame_bytes = await asyncio.to_thread(read_frame_bytes)
-    except Exception as read_error:
-        return {
-            "status": "failed",
-            "request_id": req.request_id,
-            "task_id": req.task_id,
-            "error_message": f"read frame failed: {read_error}"
-        }
-
-    img_b64 = base64.b64encode(frame_bytes).decode()
     queued_at = datetime.now(timezone.utc).isoformat()
     await task_queue.put(AsyncTask(
         task_type="video_frame_detect",
@@ -523,14 +576,14 @@ async def api_video_frame_detect(req: VideoFrameDetectRequest):
             "frame_ref": req.frame_ref,
             "model_name": req.model_name,
             "conf": req.conf,
-            "callback_base_url": req.callback_base_url,
-            "img_b64": img_b64
+            "callback_base_url": req.callback_base_url
         },
         enter_time=time.time()
     ))
 
-    async with httpx.AsyncClient() as client:
-        await post_callback(client, build_callback_url(req.callback_base_url, "frame-queued"), {
+    timeout = httpx.Timeout(CALLBACK_TIMEOUT_SEC, connect=CALLBACK_TIMEOUT_SEC)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        queued_ok = await post_callback(client, build_callback_url(req.callback_base_url, "frame-queued"), {
             "request_id": req.request_id,
             "task_id": req.task_id,
             "frame_no": req.frame_no,
@@ -538,6 +591,8 @@ async def api_video_frame_detect(req: VideoFrameDetectRequest):
             "status": "queued",
             "queued_at": queued_at
         })
+        if not queued_ok:
+            print(f"⚠️ frame-queued 回調失敗: request_id={req.request_id}")
 
     return {
         "status": "accepted",
@@ -566,6 +621,9 @@ print(f"PyTorch 版本: {torch.__version__}")
 print(f"YOLO baseline 設備: {MODELS['baseline'].device}")
 print(f"YOLO my_trained 設備: {MODELS['my_trained'].device}")
 print(f"SAM3 設備: {DEVICE}")
+print(f"Worker 數量: {ALGO_WORKER_COUNT}")
+print(f"隊列上限: {ALGO_QUEUE_MAXSIZE if ALGO_QUEUE_MAXSIZE > 0 else 'unbounded'}")
+print(f"Callback 超時: {CALLBACK_TIMEOUT_SEC}s, 重試: {CALLBACK_RETRY_MAX}")
 print(f"{'='*50}\n")
 
 
