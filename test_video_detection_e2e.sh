@@ -124,6 +124,17 @@ if [ ! -f "$TEST_VIDEO" ]; then
 fi
 
 VIDEO_SIZE=$(du -h "$TEST_VIDEO" | cut -f1)
+VIDEO_SIZE_BYTES=$(stat -c%s "$TEST_VIDEO" 2>/dev/null || stat -f%z "$TEST_VIDEO" 2>/dev/null)
+MAX_SIZE_BYTES=$((200 * 1024 * 1024))  # 200MB
+
+if [ "$VIDEO_SIZE_BYTES" -gt "$MAX_SIZE_BYTES" ]; then
+    log_error "视频文件过大: $VIDEO_SIZE ($(($VIDEO_SIZE_BYTES / 1024 / 1024))MB)"
+    log_error "后端限制最大文件大小为 200MB"
+    log_info "请使用更小的视频文件，或使用以下命令压缩视频："
+    log_info "  ffmpeg -i $TEST_VIDEO -vcodec libx264 -crf 28 output.mp4"
+    exit 1
+fi
+
 log_success "找到测试视频: $TEST_VIDEO (大小: $VIDEO_SIZE)"
 
 # ============ 步骤 5: 上传视频 ============
