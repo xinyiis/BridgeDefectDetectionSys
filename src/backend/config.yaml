@@ -34,8 +34,8 @@ video_detection:
   candidate_confidence_threshold: 0.45 # 候选观测进入聚合的最低置信度
   persist_confidence_threshold: 0.55   # 正式缺陷入库的最低平均置信度
   max_queue_inflight: 8            # 视频帧 detect 最大并发数
-  queued_timeout_seconds: 5        # 启动后等待算法 queued 回调的超时时间（秒）
-  progress_idle_timeout_seconds: 15 # queued 后连续无进度消息的超时时间（秒）
+  queued_timeout_seconds: 10       # 启动后等待算法 queued 回调的超时时间（秒）
+  progress_idle_timeout_seconds: 60 # queued 后连续无进度消息的超时时间（秒）
   callback_base_url: "http://localhost:8080/api/v1/detection/video/callback" # 算法回调后端基础地址
 
 # 文件上传配置
