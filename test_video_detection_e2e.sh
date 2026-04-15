@@ -12,8 +12,8 @@ TEST_VIDEO="${1:-}"
 # 使用数据库中实际存在的值
 BRIDGE_ID="${BRIDGE_ID:-1}"      # 数据库中存在 ID: 1-5
 DRONE_ID="${DRONE_ID:-3}"        # 数据库中存在 ID: 3, 5, 7, 9, 11
-USERNAME="${USERNAME:-testuser}" # 数据库中存在的测试用户
-PASSWORD="${PASSWORD:-password}" # 默认密码
+USERNAME="${USERNAME:-admin}"    # 使用 admin 账户
+PASSWORD="${PASSWORD:-admin123}" # admin 密码
 
 # 颜色输出
 RED='\033[0;31m'
