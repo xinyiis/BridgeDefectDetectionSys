@@ -145,8 +145,8 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	statsUseCase := usecase.NewStatsUseCase(statsService)
 
 	// PDF生成器
-	pdfGenerator := pdf.NewReportGenerator("./fonts/SourceHanSans-Regular.ttf")
-	reportUseCase := usecase.NewReportUseCase(reportService, bridgeService, defectService, pdfGenerator, "./reports")
+	pdfGenerator := pdf.NewReportGenerator(cfg.PDF.FontPath)
+	reportUseCase := usecase.NewReportUseCase(reportService, bridgeService, defectService, pdfGenerator, cfg.PDF.ReportDir)
 
 	// 4. Handler 层
 	authHandler := handler.NewAuthHandler(authUseCase)

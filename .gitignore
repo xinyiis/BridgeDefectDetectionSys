@@ -19,8 +19,8 @@ reports/*.pdf
 *.pdf
 
 # 字体文件（通过脚本下载）
-fonts/
-src/backend/fonts/
+# fonts/
+# src/backend/fonts/
 
 # 数据库文件
 *.db

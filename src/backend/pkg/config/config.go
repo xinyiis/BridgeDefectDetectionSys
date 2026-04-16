@@ -12,6 +12,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CORSConfig CORS 跨域配置
+type CORSConfig struct {
+	AllowOrigins     []string `yaml:"allow_origins"`     // 允许的源列表
+	AllowCredentials bool     `yaml:"allow_credentials"` // 是否允许携带 Cookie
+}
+
+// PDFConfig PDF 报表配置
+type PDFConfig struct {
+	FontPath  string `yaml:"font_path"`  // 字体文件路径
+	ReportDir string `yaml:"report_dir"` // 报表输出目录
+}
+
 // Config 全局配置结构体
 // 包含服务器、数据库、第三方服务等所有配置项
 type Config struct {
@@ -23,6 +35,7 @@ type Config struct {
 	Upload         UploadConfig         `yaml:"upload"`          // 文件上传配置
 	Session        SessionConfig        `yaml:"session"`         // Session 配置
 	CORS           CORSConfig           `yaml:"cors"`            // CORS 跨域配置
+	PDF            PDFConfig            `yaml:"pdf"`             // PDF 报表配置
 }
 
 // ServerConfig 服务器配置
@@ -131,12 +144,6 @@ type SessionConfig struct {
 	CookieName string `yaml:"cookie_name"` // Cookie 名称
 }
 
-// CORSConfig CORS 跨域配置
-type CORSConfig struct {
-	AllowOrigins     []string `yaml:"allow_origins"`     // 允许的源列表
-	AllowCredentials bool     `yaml:"allow_credentials"` // 是否允许携带 Cookie
-}
-
 // globalConfig 全局配置实例
 var globalConfig *Config
 
@@ -240,6 +247,14 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Upload.MaxSize <= 0 {
 		cfg.Upload.MaxSize = 10
+	}
+
+	// PDF 配置默认值
+	if cfg.PDF.FontPath == "" {
+		cfg.PDF.FontPath = "./fonts/SourceHanSans-Regular.ttf"
+	}
+	if cfg.PDF.ReportDir == "" {
+		cfg.PDF.ReportDir = "./reports"
 	}
 
 	return nil

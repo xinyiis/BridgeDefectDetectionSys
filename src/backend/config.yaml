@@ -58,3 +58,8 @@ cors:
     - "http://127.0.0.1:5173"      # SSH 隧道/本地回环访问
     - "http://localhost:3000"      # 备用前端地址
   allow_credentials: true           # 允许携带 Cookie（Session 认证必需）
+
+# PDF 报表配置
+pdf:
+  font_path: "./fonts/SourceHanSans-Regular.ttf"  # 字体文件路径（相对于程序启动目录）
+  report_dir: "./reports"                          # 报表输出目录
