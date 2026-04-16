@@ -199,13 +199,13 @@ func validateConfig(cfg *Config) error {
 		cfg.VideoDetection.TrackCenterDistanceThreshold = 0.08
 	}
 	if cfg.VideoDetection.ConfirmHits <= 0 {
-		cfg.VideoDetection.ConfirmHits = 3
+		cfg.VideoDetection.ConfirmHits = 2
 	}
 	if cfg.VideoDetection.CandidateConfidenceThreshold <= 0 {
 		cfg.VideoDetection.CandidateConfidenceThreshold = 0.1
 	}
 	if cfg.VideoDetection.PersistConfidenceThreshold <= 0 {
-		cfg.VideoDetection.PersistConfidenceThreshold = 0.55
+		cfg.VideoDetection.PersistConfidenceThreshold = 0.1
 	}
 	if cfg.VideoDetection.MaxQueueInflight <= 0 {
 		cfg.VideoDetection.MaxQueueInflight = 8

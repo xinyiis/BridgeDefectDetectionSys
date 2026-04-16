@@ -30,9 +30,9 @@ video_detection:
   track_close_seconds: 4           # 多久没有命中则关闭轨迹
   track_iou_threshold: 0.3         # 轨迹匹配 IoU 阈值
   track_center_distance_threshold: 0.08 # 轨迹匹配中心距离兜底阈值
-  confirm_hits: 3                  # 正式缺陷确认所需最少命中次数
+  confirm_hits: 2                  # 正式缺陷确认所需最少命中次数
   candidate_confidence_threshold: 0.1  # 候选观测进入聚合的最低置信度
-  persist_confidence_threshold: 0.55   # 正式缺陷入库的最低平均置信度
+  persist_confidence_threshold: 0.1    # 正式缺陷入库的最低平均置信度
   max_queue_inflight: 8            # 视频帧 detect 最大并发数
   queued_timeout_seconds: 10       # 启动后等待算法 queued 回调的超时时间（秒）
   progress_idle_timeout_seconds: 60 # queued 后连续无进度消息的超时时间（秒）

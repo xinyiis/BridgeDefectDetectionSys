@@ -50,7 +50,7 @@ func setupRouterTestConfig() *config.Config {
 			TrackCloseSeconds:            4,
 			TrackIOUThreshold:            0.3,
 			CandidateConfidenceThreshold: 0.1,
-			PersistConfidenceThreshold:   0.55,
+			PersistConfidenceThreshold:   0.1,
 			MaxQueueInflight:             8,
 		},
 		Upload: config.UploadConfig{
