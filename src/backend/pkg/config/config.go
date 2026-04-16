@@ -68,6 +68,54 @@ type VideoDetectionConfig struct {
 	CallbackBaseURL              string  `yaml:"callback_base_url"`               // 算法端回调后端基础地址
 }
 
+// ApplyVideoDetectionDefaults 为视频检测配置填充默认值。
+// 仅在配置缺失或非法时兜底，正常运行时以 config.yaml 为准。
+func ApplyVideoDetectionDefaults(cfg *VideoDetectionConfig, serverPort int) {
+	if cfg == nil {
+		return
+	}
+
+	if cfg.SampleFPS <= 0 {
+		cfg.SampleFPS = 3
+	}
+	if cfg.PlaybackDelaySeconds <= 0 {
+		cfg.PlaybackDelaySeconds = 6
+	}
+	if cfg.TrackWindowSeconds <= 0 {
+		cfg.TrackWindowSeconds = 3
+	}
+	if cfg.TrackCloseSeconds <= 0 {
+		cfg.TrackCloseSeconds = 4
+	}
+	if cfg.TrackIOUThreshold <= 0 {
+		cfg.TrackIOUThreshold = 0.3
+	}
+	if cfg.TrackCenterDistanceThreshold <= 0 {
+		cfg.TrackCenterDistanceThreshold = 0.08
+	}
+	if cfg.ConfirmHits <= 0 {
+		cfg.ConfirmHits = 2
+	}
+	if cfg.CandidateConfidenceThreshold <= 0 {
+		cfg.CandidateConfidenceThreshold = 0.1
+	}
+	if cfg.PersistConfidenceThreshold <= 0 {
+		cfg.PersistConfidenceThreshold = 0.1
+	}
+	if cfg.MaxQueueInflight <= 0 {
+		cfg.MaxQueueInflight = 8
+	}
+	if cfg.QueuedTimeoutSeconds <= 0 {
+		cfg.QueuedTimeoutSeconds = 5
+	}
+	if cfg.ProgressIdleTimeoutSeconds <= 0 {
+		cfg.ProgressIdleTimeoutSeconds = 15
+	}
+	if cfg.CallbackBaseURL == "" {
+		cfg.CallbackBaseURL = fmt.Sprintf("http://localhost:%d/api/v1/detection/video/callback", serverPort)
+	}
+}
+
 // UploadConfig 文件上传配置
 type UploadConfig struct {
 	BaseDir   string `yaml:"base_dir"`   // 媒体文件根目录（支持绝对路径）
@@ -180,45 +228,7 @@ func validateConfig(cfg *Config) error {
 	if cfg.Detection.PersistenceWorkers <= 0 {
 		cfg.Detection.PersistenceWorkers = 2
 	}
-	if cfg.VideoDetection.SampleFPS <= 0 {
-		cfg.VideoDetection.SampleFPS = 3
-	}
-	if cfg.VideoDetection.PlaybackDelaySeconds <= 0 {
-		cfg.VideoDetection.PlaybackDelaySeconds = 6
-	}
-	if cfg.VideoDetection.TrackWindowSeconds <= 0 {
-		cfg.VideoDetection.TrackWindowSeconds = 3
-	}
-	if cfg.VideoDetection.TrackCloseSeconds <= 0 {
-		cfg.VideoDetection.TrackCloseSeconds = 4
-	}
-	if cfg.VideoDetection.TrackIOUThreshold <= 0 {
-		cfg.VideoDetection.TrackIOUThreshold = 0.3
-	}
-	if cfg.VideoDetection.TrackCenterDistanceThreshold <= 0 {
-		cfg.VideoDetection.TrackCenterDistanceThreshold = 0.08
-	}
-	if cfg.VideoDetection.ConfirmHits <= 0 {
-		cfg.VideoDetection.ConfirmHits = 2
-	}
-	if cfg.VideoDetection.CandidateConfidenceThreshold <= 0 {
-		cfg.VideoDetection.CandidateConfidenceThreshold = 0.1
-	}
-	if cfg.VideoDetection.PersistConfidenceThreshold <= 0 {
-		cfg.VideoDetection.PersistConfidenceThreshold = 0.1
-	}
-	if cfg.VideoDetection.MaxQueueInflight <= 0 {
-		cfg.VideoDetection.MaxQueueInflight = 8
-	}
-	if cfg.VideoDetection.QueuedTimeoutSeconds <= 0 {
-		cfg.VideoDetection.QueuedTimeoutSeconds = 5
-	}
-	if cfg.VideoDetection.ProgressIdleTimeoutSeconds <= 0 {
-		cfg.VideoDetection.ProgressIdleTimeoutSeconds = 15
-	}
-	if cfg.VideoDetection.CallbackBaseURL == "" {
-		cfg.VideoDetection.CallbackBaseURL = fmt.Sprintf("http://localhost:%d/api/v1/detection/video/callback", cfg.Server.Port)
-	}
+	ApplyVideoDetectionDefaults(&cfg.VideoDetection, cfg.Server.Port)
 	if cfg.Upload.BaseDir == "" {
 		cfg.Upload.BaseDir = "/autodl-tmp/NLP/source"
 	}

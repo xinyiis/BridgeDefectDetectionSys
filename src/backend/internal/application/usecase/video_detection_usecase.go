@@ -62,6 +62,9 @@ func NewVideoDetectionUseCase(
 	frameTaskRepo repository.VideoFrameTaskRepository,
 	observationRepo repository.DefectObservationRepository,
 ) *VideoDetectionUseCase {
+	defaultVideoConfig := appconfig.VideoDetectionConfig{}
+	appconfig.ApplyVideoDetectionDefaults(&defaultVideoConfig, 8080)
+
 	return NewVideoDetectionUseCaseWithConfig(
 		defectService,
 		bridgeService,
@@ -71,21 +74,7 @@ func NewVideoDetectionUseCase(
 		taskRepo,
 		frameTaskRepo,
 		observationRepo,
-		appconfig.VideoDetectionConfig{
-			SampleFPS:                    3,
-			PlaybackDelaySeconds:         6,
-			TrackWindowSeconds:           3,
-			TrackCloseSeconds:            4,
-			TrackIOUThreshold:            0.3,
-			TrackCenterDistanceThreshold: 0.08,
-			ConfirmHits:                  2,
-			CandidateConfidenceThreshold: 0.1,
-			PersistConfidenceThreshold:   0.1,
-			MaxQueueInflight:             8,
-			QueuedTimeoutSeconds:         5,
-			ProgressIdleTimeoutSeconds:   15,
-			CallbackBaseURL:              "http://localhost:8080/api/v1/detection/video/callback",
-		},
+		defaultVideoConfig,
 	)
 }
 
@@ -101,15 +90,7 @@ func NewVideoDetectionUseCaseWithConfig(
 	observationRepo repository.DefectObservationRepository,
 	videoConfig appconfig.VideoDetectionConfig,
 ) *VideoDetectionUseCase {
-	if videoConfig.CallbackBaseURL == "" {
-		videoConfig.CallbackBaseURL = "http://localhost:8080/api/v1/detection/video/callback"
-	}
-	if videoConfig.QueuedTimeoutSeconds <= 0 {
-		videoConfig.QueuedTimeoutSeconds = 5
-	}
-	if videoConfig.ProgressIdleTimeoutSeconds <= 0 {
-		videoConfig.ProgressIdleTimeoutSeconds = 15
-	}
+	appconfig.ApplyVideoDetectionDefaults(&videoConfig, 8080)
 	return &VideoDetectionUseCase{
 		defectService:   defectService,
 		bridgeService:   bridgeService,
