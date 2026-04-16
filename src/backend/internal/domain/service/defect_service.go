@@ -7,6 +7,7 @@ import (
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/cache"
 	"gorm.io/gorm"
 )
 
@@ -79,7 +80,12 @@ func (s *DefectService) CreateDefect(defect *model.Defect) error {
 	}
 
 	// 2. 创建缺陷记录
-	return s.defectRepo.Create(defect)
+	if err := s.defectRepo.Create(defect); err != nil {
+		return err
+	}
+
+	cache.InvalidateStats()
+	return nil
 }
 
 // CreateDefectsBatch 批量创建缺陷记录。
@@ -107,7 +113,12 @@ func (s *DefectService) CreateDefectsBatch(defects []*model.Defect) error {
 		}
 	}
 
-	return s.defectRepo.CreateBatch(defects)
+	if err := s.defectRepo.CreateBatch(defects); err != nil {
+		return err
+	}
+
+	cache.InvalidateStats()
+	return nil
 }
 
 // GetDefect 根据ID获取缺陷
@@ -149,7 +160,12 @@ func (s *DefectService) ListDefects(filters repository.DefectListFilters) ([]mod
 // 返回：
 //   - error: 操作错误
 func (s *DefectService) DeleteDefect(id uint) error {
-	return s.defectRepo.Delete(id)
+	if err := s.defectRepo.Delete(id); err != nil {
+		return err
+	}
+
+	cache.InvalidateStats()
+	return nil
 }
 
 // ConfirmVideoDefect 首次确认视频缺陷并写入历史缺陷表。
@@ -212,7 +228,12 @@ func (s *DefectService) UpdateVideoDefectEvidence(defectID uint, update *DefectE
 		defect.ResultPath = update.BestResultPath
 	}
 
-	return s.defectRepo.Update(defect)
+	if err := s.defectRepo.Update(defect); err != nil {
+		return err
+	}
+
+	cache.InvalidateStats()
+	return nil
 }
 
 // VerifyDefectOwnership 验证缺陷所有权（用于中间件）

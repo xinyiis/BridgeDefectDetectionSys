@@ -7,6 +7,7 @@ import (
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/cache"
 	"gorm.io/gorm"
 )
 
@@ -47,7 +48,13 @@ func (s *DroneService) CreateDrone(drone *model.Drone) error {
 	}
 
 	// 2. 直接插入数据库（无需检查唯一性）
-	return s.droneRepo.Create(drone)
+	if err := s.droneRepo.Create(drone); err != nil {
+		return err
+	}
+
+	// 3. 清除统计缓存（无人机数量变化）
+	cache.InvalidateStats()
+	return nil
 }
 
 // GetByID 根据ID获取无人机
@@ -146,5 +153,11 @@ func (s *DroneService) DeleteDrone(droneID uint, currentUser *model.User) error 
 	}
 
 	// 3. 物理删除（无需事务、无级联删除、无文件删除）
-	return s.db.Unscoped().Delete(&model.Drone{}, droneID).Error
+	if err := s.db.Unscoped().Delete(&model.Drone{}, droneID).Error; err != nil {
+		return err
+	}
+
+	// 4. 清除统计缓存（无人机数量变化）
+	cache.InvalidateStats()
+	return nil
 }

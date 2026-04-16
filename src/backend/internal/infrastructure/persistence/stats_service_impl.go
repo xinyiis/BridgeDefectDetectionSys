@@ -110,7 +110,7 @@ func (s *StatsServiceImpl) GetDefectTypeDistribution(currentUser *model.User, da
 	}
 
 	// 3. 聚合查询
-	var distribution []dto.DefectTypeDistribution
+	distribution := make([]dto.DefectTypeDistribution, 0)
 	query.Select("defect_type, COUNT(*) AS count, ROUND(AVG(confidence), 2) AS avg_confidence").
 		Group("defect_type").
 		Order("count DESC").
@@ -154,7 +154,7 @@ func (s *StatsServiceImpl) GetDefectTrend(currentUser *model.User, days int, gra
 
 	// 3. 时间序列查询
 	// 使用 strftime 兼容 SQLite 和 MySQL（通过 date() 函数）
-	var trend []dto.DefectTrend
+	trend := make([]dto.DefectTrend, 0)
 
 	// 检测数据库类型
 	dbName := s.db.Dialector.Name()
@@ -247,7 +247,7 @@ func (s *StatsServiceImpl) GetBridgeRanking(currentUser *model.User, limit int, 
 	query = query.Limit(limit)
 
 	// 3. 查询
-	var ranking []dto.BridgeHealthRanking
+	ranking := make([]dto.BridgeHealthRanking, 0)
 	query.Scan(&ranking)
 
 	// 4. 计算健康评分和等级
@@ -299,7 +299,7 @@ func (s *StatsServiceImpl) GetRecentDetections(currentUser *model.User, limit in
 		Limit(limit)
 
 	// 3. 查询
-	var detections []dto.RecentDetection
+	detections := make([]dto.RecentDetection, 0)
 	query.Scan(&detections)
 
 	response = dto.RecentDetectionsResponse{
@@ -354,7 +354,7 @@ func (s *StatsServiceImpl) GetHighRiskAlerts(currentUser *model.User, severity s
 	query = query.Order("d.confidence DESC, d.area DESC").Limit(limit)
 
 	// 3. 查询
-	var alerts []dto.HighRiskAlert
+	alerts := make([]dto.HighRiskAlert, 0)
 	query.Scan(&alerts)
 
 	// 4. 计算严重程度

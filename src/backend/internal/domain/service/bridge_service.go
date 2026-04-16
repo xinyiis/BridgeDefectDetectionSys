@@ -9,6 +9,7 @@ import (
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/repository"
+	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/pkg/cache"
 	"gorm.io/gorm"
 )
 
@@ -53,7 +54,13 @@ func (s *BridgeService) CreateBridge(bridge *model.Bridge) error {
 	}
 
 	// 2. 创建桥梁
-	return s.bridgeRepo.Create(bridge)
+	if err := s.bridgeRepo.Create(bridge); err != nil {
+		return err
+	}
+
+	// 3. 清除统计缓存（桥梁数量变化）
+	cache.InvalidateStats()
+	return nil
 }
 
 // GetByID 根据ID获取桥梁
@@ -127,7 +134,13 @@ func (s *BridgeService) ListBridges(currentUser *model.User, page, pageSize int,
 // 返回：
 //   - error: 操作错误
 func (s *BridgeService) UpdateBridge(bridge *model.Bridge) error {
-	return s.bridgeRepo.Update(bridge)
+	if err := s.bridgeRepo.Update(bridge); err != nil {
+		return err
+	}
+
+	// 清除统计缓存（桥梁信息可能影响排名等统计）
+	cache.InvalidateStats()
+	return nil
 }
 
 // DeleteBridge 删除桥梁（软删除 + 级联删除）
@@ -153,7 +166,7 @@ func (s *BridgeService) DeleteBridge(bridgeID uint, currentUser *model.User) err
 	}
 
 	// 3. 开启事务（保证数据一致性）
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		// 3.1 修改桥梁编号，释放唯一索引
 		timestamp := bridge.CreatedAt.Unix()
 		bridge.BridgeCode = fmt.Sprintf("%s_deleted_%d", bridge.BridgeCode, timestamp)
@@ -181,4 +194,10 @@ func (s *BridgeService) DeleteBridge(bridgeID uint, currentUser *model.User) err
 
 		return nil
 	})
+
+	// 4. 删除成功后清除统计缓存
+	if err == nil {
+		cache.InvalidateStats()
+	}
+	return err
 }

@@ -180,3 +180,10 @@ const (
 	CacheTTLRecent     = 3 * time.Minute  // 最近检测：3分钟
 	CacheTTLAlert      = 5 * time.Minute  // 高危告警：5分钟
 )
+
+// InvalidateStats 删除所有统计缓存。
+// 统计接口按用户、时间范围和 limit 组合缓存；缺陷或资产数据变化后，
+// 最安全的做法是清掉 stats 命名空间，避免首页继续读到旧的空统计。
+func InvalidateStats() int {
+	return StatsCache.DelPattern("stats:*")
+}
