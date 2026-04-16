@@ -64,25 +64,26 @@ func (h *BridgeHandler) CreateBridge(c *gin.Context) {
 	var model3DPath string
 
 	if err == nil && file != nil {
-		// 3.1 验证文件格式
-		allowedFormats := []string{".obj", ".fbx", ".gltf", ".glb"}
+		// 3.1 验证文件格式（支持图片格式）
+		allowedFormats := []string{".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 		if err := h.fileService.ValidateFileFormat(file, allowedFormats); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
 
-		// 3.2 验证文件大小（50MB）
-		if err := h.fileService.ValidateFileSize(file, 50*1024*1024); err != nil {
+		// 3.2 验证文件大小（10MB）
+		if err := h.fileService.ValidateFileSize(file, 10*1024*1024); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
 
-		// 3.3 保存文件
-		model3DPath, err = h.fileService.SaveUploadedFile(file, "models")
+		// 3.3 保存文件到 bridge_images 目录
+		model3DPath, err = h.fileService.SaveUploadedFile(file, "bridge_images")
 		if err != nil {
 			response.InternalErrorWithDetail(c, "文件上传失败")
 			return
 		}
+		model3DPath = dto.NormalizeUploadPublicPath(model3DPath)
 	}
 
 	// 4. 创建桥梁
@@ -100,8 +101,8 @@ func (h *BridgeHandler) CreateBridge(c *gin.Context) {
 	}
 
 	// 5. 返回结果
-	response.Success(c, gin.H{
-		"bridge_id":   bridge.ID,
+	response.SuccessWithMessage(c, "添加成功", gin.H{
+		"id":          bridge.ID,
 		"bridge_name": bridge.BridgeName,
 		"bridge_code": bridge.BridgeCode,
 	})
@@ -132,13 +133,13 @@ func (h *BridgeHandler) GetBridge(c *gin.Context) {
 			Length:      bridge.Length,
 			Width:       bridge.Width,
 			Status:      bridge.Status,
-			Model3DPath: bridge.Model3DPath,
+			Model3DPath: dto.NormalizeUploadPublicPath(bridge.Model3DPath),
 			Remark:      bridge.Remark,
 			UserID:      bridge.UserID,
 			CreatedAt:   bridge.CreatedAt,
 			UpdatedAt:   bridge.UpdatedAt,
 		}
-		response.Success(c, bridgeResp)
+		response.SuccessWithMessage(c, "成功", bridgeResp)
 		return
 	}
 
@@ -156,7 +157,7 @@ func (h *BridgeHandler) GetBridge(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, bridge)
+	response.SuccessWithMessage(c, "成功", bridge)
 }
 
 // ListBridges 获取桥梁列表
@@ -190,13 +191,13 @@ func (h *BridgeHandler) ListBridges(c *gin.Context) {
 	}
 
 	// 4. 返回结果
-	response.Success(c, bridges)
+	response.SuccessWithMessage(c, "成功", bridges)
 }
 
 // UpdateBridge 更新桥梁信息
 // @Summary 更新桥梁信息
 // @Tags 桥梁管理
-// @Accept multipart/form-data
+// @Accept json
 // @Produce json
 // @Param id path int true "桥梁ID"
 // @Success 200 {object} response.Response
@@ -210,47 +211,22 @@ func (h *BridgeHandler) UpdateBridge(c *gin.Context) {
 		return
 	}
 
-	// 2. 绑定表单数据
+	// 2. 绑定 JSON 数据
 	var req dto.UpdateBridgeRequest
-	if err := c.ShouldBind(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
-	// 3. 处理文件上传（可选）
-	file, err := c.FormFile("model_3d_file")
-	if err == nil && file != nil {
-		// 验证文件
-		allowedFormats := []string{".obj", ".fbx", ".gltf", ".glb"}
-		if err := h.fileService.ValidateFileFormat(file, allowedFormats); err != nil {
-			response.BadRequest(c, err.Error())
-			return
-		}
-		if err := h.fileService.ValidateFileSize(file, 50*1024*1024); err != nil {
-			response.BadRequest(c, err.Error())
-			return
-		}
-
-		// 保存新文件
-		model3DPath, err := h.fileService.SaveUploadedFile(file, "models")
-		if err != nil {
-			response.InternalErrorWithDetail(c, "文件上传失败")
-			return
-		}
-
-		// TODO: 删除旧文件（需要先查询桥梁获取旧文件路径）
-		req.Model3DPath = model3DPath
-	}
-
-	// 4. 更新桥梁
+	// 3. 更新桥梁
 	bridge, err := h.bridgeUseCase.UpdateBridge(uint(id), &req)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	// 5. 返回结果
-	response.Success(c, bridge)
+	// 4. 返回结果
+	response.SuccessWithMessage(c, "更新成功", bridge)
 }
 
 // DeleteBridge 删除桥梁
@@ -284,7 +260,5 @@ func (h *BridgeHandler) DeleteBridge(c *gin.Context) {
 	}
 
 	// 4. 返回结果
-	response.Success(c, gin.H{
-		"message": "删除成功",
-	})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }

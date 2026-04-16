@@ -53,6 +53,10 @@ func (uc *BridgeUseCase) CreateBridge(req *dto.CreateBridgeRequest) (*dto.Bridge
 		Status:      "正常", // 默认状态
 	}
 
+	if req.Status != "" {
+		bridge.Status = req.Status
+	}
+
 	// 2. 调用Service创建桥梁
 	if err := uc.bridgeService.CreateBridge(bridge); err != nil {
 		return nil, err
@@ -161,9 +165,6 @@ func (uc *BridgeUseCase) UpdateBridge(id uint, req *dto.UpdateBridgeRequest) (*d
 	if req.Remark != "" {
 		bridge.Remark = req.Remark
 	}
-	if req.Model3DPath != "" {
-		bridge.Model3DPath = req.Model3DPath
-	}
 
 	// 3. 调用Service更新
 	if err := uc.bridgeService.UpdateBridge(bridge); err != nil {
@@ -199,7 +200,7 @@ func (uc *BridgeUseCase) toBridgeResponse(bridge *model.Bridge) *dto.BridgeRespo
 		Length:      bridge.Length,
 		Width:       bridge.Width,
 		Status:      bridge.Status,
-		Model3DPath: bridge.Model3DPath,
+		Model3DPath: dto.NormalizeUploadPublicPath(bridge.Model3DPath),
 		Remark:      bridge.Remark,
 		UserID:      bridge.UserID,
 		CreatedAt:   bridge.CreatedAt,

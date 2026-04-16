@@ -194,10 +194,27 @@ func (s *LocalFileStorage) DeleteFile(path string) error {
 
 // ResolvePath 将存储相对路径解析为本地物理路径。
 func (s *LocalFileStorage) ResolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return s.baseDir
 	}
-	return filepath.Join(s.baseDir, path)
+
+	normalized := strings.ReplaceAll(trimmed, "\\", "/")
+	normalized = strings.TrimPrefix(normalized, "./")
+
+	if strings.HasPrefix(normalized, "/uploads/") {
+		relativePath := strings.TrimPrefix(normalized, "/uploads/")
+		return filepath.Join(s.baseDir, filepath.FromSlash(relativePath))
+	}
+	if strings.HasPrefix(normalized, "uploads/") {
+		relativePath := strings.TrimPrefix(normalized, "uploads/")
+		return filepath.Join(s.baseDir, filepath.FromSlash(relativePath))
+	}
+
+	if filepath.IsAbs(trimmed) {
+		return trimmed
+	}
+	return filepath.Join(s.baseDir, trimmed)
 }
 
 // ValidateFileFormat 验证文件格式

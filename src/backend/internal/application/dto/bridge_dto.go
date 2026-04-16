@@ -6,33 +6,33 @@ import "time"
 
 // CreateBridgeRequest 创建桥梁请求
 type CreateBridgeRequest struct {
-	BridgeName  string  `form:"bridge_name" binding:"required"`
-	BridgeCode  string  `form:"bridge_code" binding:"required"`
-	Address     string  `form:"address" binding:"required"`
-	Longitude   float64 `form:"longitude" binding:"required"`
-	Latitude    float64 `form:"latitude" binding:"required"`
-	BridgeType  string  `form:"bridge_type" binding:"required"`
-	BuildYear   int     `form:"build_year" binding:"required"`
-	Length      float64 `form:"length" binding:"required"`
-	Width       float64 `form:"width" binding:"required"`
-	Remark      string  `form:"remark"`
-	Model3DPath string  `form:"-"` // 由Handler设置
-	UserID      uint    `form:"-"` // 由Handler设置
+	BridgeName  string  `json:"bridge_name" form:"bridge_name" binding:"required"`
+	BridgeCode  string  `json:"bridge_code" form:"bridge_code" binding:"required"`
+	Address     string  `json:"address" form:"address" binding:"required"`
+	Longitude   float64 `json:"longitude" form:"longitude" binding:"required"`
+	Latitude    float64 `json:"latitude" form:"latitude" binding:"required"`
+	BridgeType  string  `json:"bridge_type" form:"bridge_type" binding:"required"`
+	BuildYear   int     `json:"build_year" form:"build_year" binding:"required"`
+	Length      float64 `json:"length" form:"length" binding:"required"`
+	Width       float64 `json:"width" form:"width" binding:"required"`
+	Status      string  `json:"status" form:"status"`
+	Remark      string  `json:"remark" form:"remark"`
+	Model3DPath string  `json:"model_3d_path" form:"-"` // 由Handler设置
+	UserID      uint    `json:"user_id" form:"-"`       // 由Handler设置
 }
 
 // UpdateBridgeRequest 更新桥梁请求
 type UpdateBridgeRequest struct {
-	BridgeName  string  `form:"bridge_name"`
-	Address     string  `form:"address"`
-	Longitude   float64 `form:"longitude"`
-	Latitude    float64 `form:"latitude"`
-	BridgeType  string  `form:"bridge_type"`
-	BuildYear   int     `form:"build_year"`
-	Length      float64 `form:"length"`
-	Width       float64 `form:"width"`
-	Status      string  `form:"status"`
-	Remark      string  `form:"remark"`
-	Model3DPath string  `form:"-"`
+	BridgeName string  `json:"bridge_name" form:"bridge_name"`
+	Address    string  `json:"address" form:"address"`
+	Longitude  float64 `json:"longitude" form:"longitude"`
+	Latitude   float64 `json:"latitude" form:"latitude"`
+	BridgeType string  `json:"bridge_type" form:"bridge_type"`
+	BuildYear  int     `json:"build_year" form:"build_year"`
+	Length     float64 `json:"length" form:"length"`
+	Width      float64 `json:"width" form:"width"`
+	Status     string  `json:"status" form:"status"`
+	Remark     string  `json:"remark" form:"remark"`
 }
 
 // BridgeResponse 桥梁响应

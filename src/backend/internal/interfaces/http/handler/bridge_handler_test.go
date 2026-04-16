@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-contrib/sessions"
@@ -179,6 +181,7 @@ func TestCreateBridge_Success(t *testing.T) {
 	writer.WriteField("build_year", "2020")
 	writer.WriteField("length", "1500.5")
 	writer.WriteField("width", "30.0")
+	writer.WriteField("status", "维修中")
 	writer.WriteField("remark", "测试桥梁")
 	writer.Close()
 
@@ -198,8 +201,14 @@ func TestCreateBridge_Success(t *testing.T) {
 
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["message"] != "添加成功" {
+		t.Fatalf("Expected message '添加成功', got %v", response["message"])
+	}
 
 	data := response["data"].(map[string]interface{})
+	if data["id"] == nil {
+		t.Fatalf("Expected data.id to exist, got %v", data)
+	}
 	if data["bridge_name"] != "长江大桥" {
 		t.Errorf("Expected bridge_name '长江大桥', got %v", data["bridge_name"])
 	}
@@ -215,6 +224,73 @@ func TestCreateBridge_Success(t *testing.T) {
 	}
 	if bridge.UserID != user.ID {
 		t.Errorf("Expected user_id %d, got %d", user.ID, bridge.UserID)
+	}
+	if bridge.Status != "维修中" {
+		t.Errorf("Expected status '维修中', got %s", bridge.Status)
+	}
+}
+
+// TestCreateBridge_WithModelFile 测试创建桥梁时上传3D模型文件
+func TestCreateBridge_WithModelFile(t *testing.T) {
+	db := setupBridgeTestDB(t)
+	router := setupBridgeTestRouter(db)
+
+	// 创建测试用户并登录
+	_ = createTestUser(db, "fileuser", "user")
+	cookies := loginBridgeTest(t, router, "fileuser", "123456")
+
+	// 准备 multipart/form-data（包含文件）
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("bridge_name", "含模型桥梁")
+	writer.WriteField("bridge_code", "BR_FILE_001")
+	writer.WriteField("address", "测试地址")
+	writer.WriteField("longitude", "118.78")
+	writer.WriteField("latitude", "32.04")
+	writer.WriteField("bridge_type", "梁桥")
+	writer.WriteField("build_year", "2020")
+	writer.WriteField("length", "100.5")
+	writer.WriteField("width", "15.0")
+
+	filePart, err := writer.CreateFormFile("model_3d_file", "bridge.obj")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := filePart.Write([]byte("o bridge\nv 0 0 0\n")); err != nil {
+		t.Fatalf("Write file part failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close failed: %v", err)
+	}
+
+	req, _ := http.NewRequest("POST", "/api/bridges", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Response: %s", w.Code, w.Body.String())
+	}
+
+	var bridge model.Bridge
+	if err := db.Where("bridge_code = ?", "BR_FILE_001").First(&bridge).Error; err != nil {
+		t.Fatalf("Bridge not created in database: %v", err)
+	}
+
+	if !strings.HasPrefix(bridge.Model3DPath, "/uploads/models/") {
+		t.Fatalf("Model3DPath should start with /uploads/models/, got %q", bridge.Model3DPath)
+	}
+	if !strings.HasSuffix(bridge.Model3DPath, ".obj") {
+		t.Fatalf("Model3DPath should end with .obj, got %q", bridge.Model3DPath)
+	}
+
+	relativePath := strings.TrimPrefix(bridge.Model3DPath, "/uploads/")
+	diskPath := filepath.Join("./test_uploads", filepath.FromSlash(relativePath))
+	if _, err := os.Stat(diskPath); err != nil {
+		t.Fatalf("Uploaded model file not found on disk: %s, err: %v", diskPath, err)
 	}
 }
 
@@ -371,6 +447,9 @@ func TestGetBridge_Success(t *testing.T) {
 
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["message"] != "成功" {
+		t.Fatalf("Expected message '成功', got %v", response["message"])
+	}
 
 	data := response["data"].(map[string]interface{})
 	if data["bridge_name"] != "TestBridge" {
@@ -423,14 +502,13 @@ func TestUpdateBridge_Success(t *testing.T) {
 	cookies := loginBridgeTest(t, router, "testuser", "123456")
 
 	// 更新桥梁
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	writer.WriteField("bridge_name", "NewName")
-	writer.WriteField("status", "维修中")
-	writer.Close()
+	body, _ := json.Marshal(map[string]interface{}{
+		"bridge_name": "NewName",
+		"status":      "维修中",
+	})
 
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/api/bridges/%d", bridge.ID), body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("/api/bridges/%d", bridge.ID), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
 	for _, cookie := range cookies {
 		req.AddCookie(cookie)
 	}
@@ -440,6 +518,12 @@ func TestUpdateBridge_Success(t *testing.T) {
 	// 验证响应
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d. Response: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["message"] != "更新成功" {
+		t.Fatalf("Expected message '更新成功', got %v", response["message"])
 	}
 
 	// 验证数据库中的数据已更新
@@ -480,6 +564,12 @@ func TestDeleteBridge_Success(t *testing.T) {
 	// 验证响应
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d. Response: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["message"] != "删除成功" {
+		t.Fatalf("Expected message '删除成功', got %v", response["message"])
 	}
 
 	// 验证桥梁已软删除（查询不到）

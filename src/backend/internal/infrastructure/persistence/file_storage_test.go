@@ -3,6 +3,7 @@ package persistence_test
 
 import (
 	"mime/multipart"
+	"path/filepath"
 	"testing"
 
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/infrastructure/persistence"
@@ -80,6 +81,47 @@ func TestFileService_ValidateFileFormat(t *testing.T) {
 			err := fs.ValidateFileFormat(file, tt.allowed)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateFileFormat() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+// TestFileService_ResolvePath_SupportUploadsURLPrefix 测试 /uploads 路径可正确映射到本地目录
+func TestFileService_ResolvePath_SupportUploadsURLPrefix(t *testing.T) {
+	fs := persistence.NewLocalFileStorage("/data/storage")
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "upload url prefix",
+			in:   "/uploads/models/a.obj",
+			want: filepath.Join("/data/storage", "models", "a.obj"),
+		},
+		{
+			name: "upload relative prefix",
+			in:   "uploads/models/a.obj",
+			want: filepath.Join("/data/storage", "models", "a.obj"),
+		},
+		{
+			name: "plain relative path",
+			in:   "models/a.obj",
+			want: filepath.Join("/data/storage", "models", "a.obj"),
+		},
+		{
+			name: "absolute local path",
+			in:   "/var/lib/models/a.obj",
+			want: "/var/lib/models/a.obj",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fs.ResolvePath(tc.in)
+			if got != tc.want {
+				t.Fatalf("ResolvePath(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
