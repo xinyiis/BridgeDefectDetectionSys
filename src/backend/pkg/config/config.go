@@ -202,7 +202,7 @@ func validateConfig(cfg *Config) error {
 		cfg.VideoDetection.ConfirmHits = 3
 	}
 	if cfg.VideoDetection.CandidateConfidenceThreshold <= 0 {
-		cfg.VideoDetection.CandidateConfidenceThreshold = 0.45
+		cfg.VideoDetection.CandidateConfidenceThreshold = 0.1
 	}
 	if cfg.VideoDetection.PersistConfidenceThreshold <= 0 {
 		cfg.VideoDetection.PersistConfidenceThreshold = 0.55

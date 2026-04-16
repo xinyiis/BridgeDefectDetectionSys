@@ -79,7 +79,7 @@ func NewVideoDetectionUseCase(
 			TrackIOUThreshold:            0.3,
 			TrackCenterDistanceThreshold: 0.08,
 			ConfirmHits:                  3,
-			CandidateConfidenceThreshold: 0.45,
+			CandidateConfidenceThreshold: 0.1,
 			PersistConfidenceThreshold:   0.55,
 			MaxQueueInflight:             8,
 			QueuedTimeoutSeconds:         5,

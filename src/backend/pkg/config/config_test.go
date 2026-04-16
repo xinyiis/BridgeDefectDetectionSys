@@ -41,8 +41,8 @@ func TestValidateConfigDefaultsPersistenceWorkers(t *testing.T) {
 	if cfg.VideoDetection.ConfirmHits != 3 {
 		t.Fatalf("expected default confirm_hits=3, got %d", cfg.VideoDetection.ConfirmHits)
 	}
-	if cfg.VideoDetection.CandidateConfidenceThreshold != 0.45 {
-		t.Fatalf("expected default candidate_confidence_threshold=0.45, got %v", cfg.VideoDetection.CandidateConfidenceThreshold)
+	if cfg.VideoDetection.CandidateConfidenceThreshold != 0.1 {
+		t.Fatalf("expected default candidate_confidence_threshold=0.1, got %v", cfg.VideoDetection.CandidateConfidenceThreshold)
 	}
 	if cfg.VideoDetection.PersistConfidenceThreshold != 0.55 {
 		t.Fatalf("expected default persist_confidence_threshold=0.55, got %v", cfg.VideoDetection.PersistConfidenceThreshold)
