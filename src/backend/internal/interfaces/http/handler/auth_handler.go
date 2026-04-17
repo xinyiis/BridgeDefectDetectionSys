@@ -62,6 +62,39 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
+// RegisterAdmin 管理员注册接口
+// POST /api/admin/register
+// 请求体: AdminRegisterRequest
+// 响应: UserResponse
+func (h *AuthHandler) RegisterAdmin(c *gin.Context) {
+	// 1. 参数绑定和验证
+	var req dto.AdminRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 2. 调用UseCase执行业务逻辑
+	user, err := h.authUseCase.RegisterAdmin(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// 3. 返回成功响应
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "管理员注册成功",
+		"data":    user,
+	})
+}
+
 // Login 用户登录接口
 // POST /api/login
 // 请求体: LoginRequest

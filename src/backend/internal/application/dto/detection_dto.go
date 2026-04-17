@@ -19,6 +19,7 @@ type DetectionResponse struct {
 	TotalDefects       int            `json:"total_defects"`                 // 检测到的缺陷总数
 	ImagePath          string         `json:"image_path"`                    // 原始图片路径
 	ResultPath         string         `json:"result_path"`                   // 结果图片路径
+	ResultImageBase64  string         `json:"result_image_base64,omitempty"` // 首次响应直接返回的结果图Base64
 	ProcessingTime     float64        `json:"processing_time"`               // 处理时间（秒）
 	PersistenceStatus  string         `json:"persistence_status"`            // 持久化状态：pending/completed/failed
 	PersistenceTaskID  string         `json:"persistence_task_id,omitempty"` // 持久化任务ID

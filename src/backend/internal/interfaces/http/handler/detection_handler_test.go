@@ -3,6 +3,7 @@ package handler_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -278,6 +279,10 @@ func TestUploadAndDetect_Success(t *testing.T) {
 	data := response["data"].(map[string]interface{})
 	if data["total_defects"].(float64) < 1 {
 		t.Errorf("Expected at least 1 defect, got %v", data["total_defects"])
+	}
+	expectedResultImageBase64 := base64.StdEncoding.EncodeToString([]byte("mock_result_image_data"))
+	if resultImageBase64, ok := data["result_image_base64"].(string); !ok || resultImageBase64 != expectedResultImageBase64 {
+		t.Fatalf("expected result_image_base64 in first response, got %#v", data["result_image_base64"])
 	}
 
 	if status, ok := data["persistence_status"].(string); !ok || status != "pending" {

@@ -119,7 +119,7 @@ func setupAPIRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	reportService := service.NewReportService(db, reportRepo)
 
 	// 3. UseCase 层
-	authUseCase := usecase.NewAuthUseCase(userService)
+	authUseCase := usecase.NewAuthUseCase(userService, cfg.Admin.RegisterKey)
 	userUseCase := usecase.NewUserUseCase(userService)
 	bridgeUseCase := usecase.NewBridgeUseCase(bridgeService)
 	droneUseCase := usecase.NewDroneUseCase(droneService)
@@ -222,8 +222,9 @@ func registerPublicRoutes(r *gin.RouterGroup, authHandler *handler.AuthHandler) 
 	// ========== 用户认证（/auth前缀）==========
 	auth := r.Group("/auth")
 	{
-		auth.POST("/register", authHandler.Register) // POST /api/v1/auth/register
-		auth.POST("/login", authHandler.Login)       // POST /api/v1/auth/login
+		auth.POST("/register", authHandler.Register)       // POST /api/v1/auth/register
+		auth.POST("/login", authHandler.Login)             // POST /api/v1/auth/login
+		auth.POST("/admin/register", authHandler.RegisterAdmin) // POST /api/v1/auth/admin/register
 	}
 }
 

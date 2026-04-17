@@ -145,6 +145,10 @@ func TestDetectionUseCaseUploadAndDetectCalculatesPhysicalDimensions(t *testing.
 	if !strings.HasPrefix(result.ResultPath, "results/") {
 		t.Fatalf("expected stored result path, got: %s", result.ResultPath)
 	}
+	expectedResultImageBase64 := base64.StdEncoding.EncodeToString([]byte("segmented-image"))
+	if result.ResultImageBase64 != expectedResultImageBase64 {
+		t.Fatalf("unexpected result image base64: %q", result.ResultImageBase64)
+	}
 	if result.Defects[0].ID != 0 {
 		t.Fatalf("expected async defect id to be 0 before persistence, got %d", result.Defects[0].ID)
 	}

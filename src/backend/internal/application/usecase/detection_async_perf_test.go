@@ -395,6 +395,7 @@ func runLegacySyncLikeFlow(uc *DetectionUseCase, req *dto.DetectionUploadRequest
 		TotalDefects:      len(defects),
 		ImagePath:         imagePath,
 		ResultPath:        resultPath,
+		ResultImageBase64: pythonResult.ResultImage,
 		ProcessingTime:    time.Since(startTime).Seconds(),
 		PersistenceStatus: detectionPersistenceStatusCompleted,
 		Defects:           uc.toDefectDTOs(defects),

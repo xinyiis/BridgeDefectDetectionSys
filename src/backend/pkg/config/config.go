@@ -24,6 +24,11 @@ type PDFConfig struct {
 	ReportDir string `yaml:"report_dir"` // 报表输出目录
 }
 
+// AdminConfig 管理员配置
+type AdminConfig struct {
+	RegisterKey string `yaml:"register_key"` // 管理员注册密钥
+}
+
 // Config 全局配置结构体
 // 包含服务器、数据库、第三方服务等所有配置项
 type Config struct {
@@ -36,6 +41,7 @@ type Config struct {
 	Session        SessionConfig        `yaml:"session"`         // Session 配置
 	CORS           CORSConfig           `yaml:"cors"`            // CORS 跨域配置
 	PDF            PDFConfig            `yaml:"pdf"`             // PDF 报表配置
+	Admin          AdminConfig          `yaml:"admin"`           // 管理员配置
 }
 
 // ServerConfig 服务器配置

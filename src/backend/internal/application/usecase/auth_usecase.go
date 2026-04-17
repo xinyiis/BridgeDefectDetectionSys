@@ -3,6 +3,8 @@
 package usecase
 
 import (
+	"errors"
+
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/application/dto"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/model"
 	"github.com/xinyiis/BridgeDefectDetectionSys/src/backend/internal/domain/service"
@@ -11,18 +13,21 @@ import (
 // AuthUseCase 认证用例
 // 处理用户注册、登录等认证相关业务流程
 type AuthUseCase struct {
-	userService *service.UserService // 用户领域服务
+	userService       *service.UserService // 用户领域服务
+	adminRegisterKey  string               // 管理员注册密钥
 }
 
 // NewAuthUseCase 创建认证用例实例
 // 参数：
 //   - userService: 用户领域服务
+//   - adminRegisterKey: 管理员注册密钥
 //
 // 返回：
 //   - *AuthUseCase: 认证用例实例
-func NewAuthUseCase(userService *service.UserService) *AuthUseCase {
+func NewAuthUseCase(userService *service.UserService, adminRegisterKey string) *AuthUseCase {
 	return &AuthUseCase{
-		userService: userService,
+		userService:      userService,
+		adminRegisterKey: adminRegisterKey,
 	}
 }
 
@@ -50,6 +55,38 @@ func (uc *AuthUseCase) Register(req *dto.RegisterRequest) (*dto.UserResponse, er
 	}
 
 	// 3. 转换为响应DTO（脱敏）
+	return uc.toUserResponse(user), nil
+}
+
+// RegisterAdmin 管理员注册
+// 参数：
+//   - req: 管理员注册请求DTO
+//
+// 返回：
+//   - *dto.UserResponse: 用户信息响应（脱敏）
+//   - error: 操作错误
+func (uc *AuthUseCase) RegisterAdmin(req *dto.AdminRegisterRequest) (*dto.UserResponse, error) {
+	// 1. 验证管理员注册密钥
+	if req.RegisterKey != uc.adminRegisterKey {
+		return nil, errors.New("管理员注册密钥错误")
+	}
+
+	// 2. 构建管理员用户实体
+	user := &model.User{
+		Username: req.Username,
+		Password: req.Password, // 明文密码，由Service层加密
+		RealName: req.RealName,
+		Phone:    req.Phone,
+		Email:    req.Email,
+		Role:     "admin", // 管理员角色
+	}
+
+	// 3. 调用Service创建用户（包含密码加密和验证）
+	if err := uc.userService.CreateUser(user); err != nil {
+		return nil, err
+	}
+
+	// 4. 转换为响应DTO（脱敏）
 	return uc.toUserResponse(user), nil
 }
 

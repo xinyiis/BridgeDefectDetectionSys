@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -81,10 +82,15 @@ func (s *HTTPPythonService) DetectDefect(imagePath, modelName, segmentModelType 
 		return nil, fmt.Errorf("序列化检测框失败: %w", err)
 	}
 
+	// 计算 area_ratio: 米/像素 -> cm²/像素
+	// 1米 = 100厘米，面积 = (长度)²
+	areaRatio := pixelRatio * 100 * pixelRatio * 100
+
 	segmentResult, err := s.Segment(imagePath, &service.SegmentRequest{
 		BBoxesJSON: string(bboxesJSON),
 		Alpha:      0.5,
 		ModelType:  segmentModelType,
+		AreaRatio:  areaRatio,
 	})
 	if err != nil {
 		return nil, err
@@ -94,6 +100,28 @@ func (s *HTTPPythonService) DetectDefect(imagePath, modelName, segmentModelType 
 	}
 	if segmentResult.Status != "success" {
 		return nil, fmt.Errorf("分割接口业务失败: %s", segmentResult.Status)
+	}
+
+	// 将分割结果中的面积数据映射到缺陷列表
+	maskMap := make(map[int]*service.IndividualMask)
+	for i := range segmentResult.IndividualMasks {
+		mask := &segmentResult.IndividualMasks[i]
+		maskMap[mask.BoxIndex] = mask
+	}
+
+	// 更新缺陷的面积信息（从算法端返回的 actual_area，单位：cm²）
+	for i := range defects {
+		if mask, ok := maskMap[i]; ok {
+			// actual_area 单位是 cm²，转换为 m²
+			defects[i].Area = mask.ActualArea / 10000.0
+			// 假设缺陷是矩形，根据面积估算长宽（这是一个简化，实际可能需要更复杂的计算）
+			// 这里保持原有逻辑，或者算法端也可以返回长宽
+			if defects[i].Area > 0 {
+				side := math.Sqrt(defects[i].Area)
+				defects[i].Length = side
+				defects[i].Width = side
+			}
+		}
 	}
 
 	return &service.PythonDetectionResult{
@@ -206,6 +234,11 @@ func (s *HTTPPythonService) Segment(imagePath string, req *service.SegmentReques
 		}
 		if req.Alpha > 0 {
 			if err := writer.WriteField("alpha", fmt.Sprintf("%.2f", req.Alpha)); err != nil {
+				return err
+			}
+		}
+		if req.AreaRatio > 0 {
+			if err := writer.WriteField("area_ratio", fmt.Sprintf("%.6f", req.AreaRatio)); err != nil {
 				return err
 			}
 		}

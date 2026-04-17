@@ -51,6 +51,10 @@ session:
   max_age: 86400                   # Session 有效期（秒，默认24小时）
   cookie_name: "bridge_session"    # Cookie 名称
 
+# 管理员注册配置
+admin:
+  register_key: "admin-register-secret-2024"  # 管理员注册密钥（生产环境必须修改为强密码）
+
 # CORS 跨域配置
 cors:
   allow_origins:

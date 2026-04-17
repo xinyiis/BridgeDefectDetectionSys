@@ -74,6 +74,7 @@ type SegmentRequest struct {
 	BBoxesJSON string  // bbox JSON 字符串
 	Alpha      float64 // 掩码透明度
 	ModelType  string  // 分割模型类型（student/teacher）
+	AreaRatio  float64 // 单位像素代表的物理面积（cm²/像素）
 }
 
 // PreprocessResult 图像预处理响应。
@@ -101,9 +102,10 @@ type BBoxItem struct {
 
 // SegmentResult 实例分割响应。
 type SegmentResult struct {
-	Status          string           `json:"status"`
-	FusionImage     string           `json:"fusion_image"`
-	IndividualMasks []IndividualMask `json:"individual_masks"`
+	Status             string           `json:"status"`
+	FusionImage        string           `json:"fusion_image"`
+	IndividualMasks    []IndividualMask `json:"individual_masks"`
+	TotalDetectedCount int              `json:"total_detected_count"`
 }
 
 // VideoFrameDetectEnqueueRequest 视频单帧异步检测入队请求。
@@ -130,9 +132,12 @@ type VideoFrameDetectEnqueueResponse struct {
 
 // IndividualMask 单个分割掩码。
 type IndividualMask struct {
-	BoxIndex   int    `json:"box_index"`
-	Label      string `json:"label"`
-	MaskBase64 string `json:"mask_base64"`
+	BoxIndex   int     `json:"box_index"`
+	ClassName  string  `json:"class_name"`
+	Label      string  `json:"label"`
+	MaskBase64 string  `json:"mask_base64"`
+	PixelCount int     `json:"pixel_count"`
+	ActualArea float64 `json:"actual_area"`
 }
 
 // ClassNameToChinese 病害类别映射。

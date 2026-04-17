@@ -223,6 +223,7 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 		TotalDefects:      len(defects),
 		ImagePath:         imagePath,
 		ResultPath:        resultPath,
+		ResultImageBase64: pythonResult.ResultImage,
 		ProcessingTime:    processingTime,
 		PersistenceStatus: uc.currentPersistenceStatus(taskID),
 		PersistenceTaskID: taskID,
