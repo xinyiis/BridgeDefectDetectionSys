@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/signintech/gopdf"
@@ -76,54 +77,91 @@ func (g *ReportGenerator) GenerateBridgeInspectionReport(
 
 // addChineseFont 添加中文字体
 func (g *ReportGenerator) addChineseFont() error {
-	// 尝试加载文泉驿微米黑字体（TTC格式，需要特殊处理）
-	ttcPath := filepath.Join(filepath.Dir(g.fontPath), "wqy-microhei.ttc")
-	if _, err := os.Stat(ttcPath); err == nil {
-		// TTC文件存在，尝试读取并加载第一个字体
-		data, err := os.ReadFile(ttcPath)
-		if err != nil {
-			return fmt.Errorf("读取TTC字体文件失败: %v", err)
+	candidates := buildFontCandidates(g.fontPath, os.Getenv("BRIDGE_PDF_FONT_PATH"))
+	var loadErrors []string
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err != nil {
+			continue
 		}
-		// TTC文件格式：前4字节是"ttcf"标识，然后是版本号，然后是字体数量
-		// 跳过TTC头部，直接提取第一个TTF字体
-		// 这是一个简化处理，实际TTC格式更复杂
+
+		if err := g.registerFont("sourcehansans", candidate); err != nil {
+			loadErrors = append(loadErrors, fmt.Sprintf("%s (%v)", candidate, err))
+			continue
+		}
+
+		if err := g.pdf.SetFont("sourcehansans", "", 12); err != nil {
+			return fmt.Errorf("设置字体失败: %v", err)
+		}
+
+		return nil
+	}
+
+	baseError := "未找到可用中文字体，请安装后重试"
+	if len(loadErrors) > 0 {
+		baseError = "中文字体存在但加载失败，请检查字体文件格式"
+	}
+
+	loadErrorText := "无（字体文件不存在）"
+	if len(loadErrors) > 0 {
+		loadErrorText = strings.Join(loadErrors, "; ")
+	}
+
+	return fmt.Errorf("%s。已尝试路径: %s。加载错误: %s。建议: 在后端目录执行 `mkdir -p ./fonts && wget -O ./fonts/SourceHanSans-Regular.ttf https://github.com/notofonts/noto-cjk/raw/main/Sans/TTF/SimplifiedChinese/NotoSansSC-Regular.ttf`", baseError, strings.Join(candidates, ", "), loadErrorText)
+}
+
+func (g *ReportGenerator) registerFont(fontName, fontPath string) error {
+	addErr := g.pdf.AddTTFFont(fontName, fontPath)
+	if addErr == nil {
+		return nil
+	}
+
+	// gopdf 对 .ttc 支持有限，尝试通过字体数据方式兜底。
+	if strings.EqualFold(filepath.Ext(fontPath), ".ttc") {
+		data, readErr := os.ReadFile(fontPath)
+		if readErr != nil {
+			return fmt.Errorf("读取TTC字体文件失败: %v", readErr)
+		}
 		if len(data) < 12 {
 			return fmt.Errorf("TTC文件格式无效")
 		}
-		// 直接使用字体数据（gopdf可能不支持TTC）
-		if err := g.pdf.AddTTFFontData("sourcehansans", data); err != nil {
-			// TTC加载失败，尝试使用系统Liberation字体作为fallback
-			fallbackPath := "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-			if err2 := g.pdf.AddTTFFont("sourcehansans", fallbackPath); err2 != nil {
-				return fmt.Errorf("加载字体失败: TTC错误=%v, Fallback错误=%v", err, err2)
-			}
-		}
-	} else {
-		// 检查原始字体文件是否存在
-		if _, err := os.Stat(g.fontPath); os.IsNotExist(err) {
-			// 尝试使用系统Liberation字体
-			fallbackPath := "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-			if err := g.pdf.AddTTFFont("sourcehansans", fallbackPath); err != nil {
-				return fmt.Errorf("字体文件不存在且fallback失败: %s, %v", g.fontPath, err)
-			}
-		} else {
-			// 添加TTF字体（gopdf原生支持）
-			if err := g.pdf.AddTTFFont("sourcehansans", g.fontPath); err != nil {
-				// 如果加载失败，尝试使用系统Liberation字体
-				fallbackPath := "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-				if err2 := g.pdf.AddTTFFont("sourcehansans", fallbackPath); err2 != nil {
-					return fmt.Errorf("加载字体文件失败: 原始错误=%v, Fallback错误=%v", err, err2)
-				}
-			}
+		if err := g.pdf.AddTTFFontData(fontName, data); err == nil {
+			return nil
 		}
 	}
 
-	// 设置默认字体
-	if err := g.pdf.SetFont("sourcehansans", "", 12); err != nil {
-		return fmt.Errorf("设置字体失败: %v", err)
+	return fmt.Errorf("加载字体文件失败: %s (%v)", fontPath, addErr)
+}
+
+func buildFontCandidates(configuredFontPath, envFontPath string) []string {
+	candidates := make([]string, 0, 8)
+	seen := make(map[string]struct{})
+
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		candidates = append(candidates, path)
 	}
 
-	return nil
+	add(envFontPath)
+	add(configuredFontPath)
+	if configuredFontPath != "" {
+		add(filepath.Join(filepath.Dir(configuredFontPath), "wqy-microhei.ttc"))
+	}
+
+	// 常见服务器内置中文字体路径
+	add("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
+	add("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc")
+	add("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")
+	add("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf")
+
+	return candidates
 }
 
 // generateCoverPage 生成封面
