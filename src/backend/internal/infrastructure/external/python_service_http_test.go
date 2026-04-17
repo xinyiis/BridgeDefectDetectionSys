@@ -48,6 +48,9 @@ func TestHTTPPythonServiceSegmentUsesBBoxesJSONField(t *testing.T) {
 		if got := r.FormValue("model_type"); got != "teacher" {
 			t.Fatalf("unexpected model_type: %q", got)
 		}
+		if got := r.FormValue("area_ratio"); got != "12.500000" {
+			t.Fatalf("unexpected area_ratio: %q", got)
+		}
 
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -69,6 +72,7 @@ func TestHTTPPythonServiceSegmentUsesBBoxesJSONField(t *testing.T) {
 		BBoxesJSON: expectedBBoxes,
 		Alpha:      0.5,
 		ModelType:  "teacher",
+		AreaRatio:  12.5,
 	})
 	if err != nil {
 		t.Fatalf("segment request failed: %v", err)
@@ -90,7 +94,7 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 
 	const detectResponse = `{"status":"success","model_used":"baseline","yolo_bboxes":[{"box_id":0,"class_idx":0,"class_name":"Crack","yolo_coords":[0.5,0.5,0.3,0.1],"confidence":0.93}],"image_results":"detect-image"}`
 	const expectedBBoxes = `[{"box_id":0,"class_idx":0,"class_name":"Crack","yolo_coords":[0.5,0.5,0.3,0.1],"confidence":0.93}]`
-	const segmentResponse = `{"status":"success","fusion_image":"segment-image","individual_masks":[{"box_index":0,"label":"Crack","mask_base64":"mask"}]}`
+	const segmentResponse = `{"status":"success","fusion_image":"segment-image","individual_masks":[{"box_index":0,"class_name":"Crack","pixel_count":4502,"actual_area":45.02}],"total_detected_count":1}`
 
 	var detectCalled bool
 	var segmentCalled bool
@@ -125,6 +129,9 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 			}
 			if got := r.FormValue("model_type"); got != "teacher" {
 				t.Fatalf("unexpected model_type: %q", got)
+			}
+			if got := r.FormValue("area_ratio"); got != "100.000000" {
+				t.Fatalf("unexpected area_ratio: %q", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(segmentResponse))
@@ -166,6 +173,12 @@ func TestHTTPPythonServiceDetectDefectComposesDetectAndSegment(t *testing.T) {
 	}
 	if result.Defects[0].Confidence != 0.93 {
 		t.Fatalf("unexpected confidence: %v", result.Defects[0].Confidence)
+	}
+	if result.Defects[0].Area != 0.004502 {
+		t.Fatalf("unexpected area: %v", result.Defects[0].Area)
+	}
+	if result.Defects[0].Length != 0 || result.Defects[0].Width != 0 {
+		t.Fatalf("expected no length/width synthesis, got length=%v width=%v", result.Defects[0].Length, result.Defects[0].Width)
 	}
 }
 

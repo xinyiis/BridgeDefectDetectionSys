@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -112,14 +111,10 @@ func (s *HTTPPythonService) DetectDefect(imagePath, modelName, segmentModelType 
 	// 更新缺陷的面积信息（从算法端返回的 actual_area，单位：cm²）
 	for i := range defects {
 		if mask, ok := maskMap[i]; ok {
-			// actual_area 单位是 cm²，转换为 m²
-			defects[i].Area = mask.ActualArea / 10000.0
-			// 假设缺陷是矩形，根据面积估算长宽（这是一个简化，实际可能需要更复杂的计算）
-			// 这里保持原有逻辑，或者算法端也可以返回长宽
-			if defects[i].Area > 0 {
-				side := math.Sqrt(defects[i].Area)
-				defects[i].Length = side
-				defects[i].Width = side
+			if mask.ActualArea > 0 {
+				// actual_area 单位是 cm²，转换为 m²。
+				// 长宽不再根据面积反推，避免和算法端 mask 面积产生语义冲突。
+				defects[i].Area = mask.ActualArea / 10000.0
 			}
 		}
 	}

@@ -351,6 +351,12 @@ func TestVideoDetectionUseCase_StreamTaskConfirmsDefect(t *testing.T) {
 	if defects[0].BestResultPath != "" {
 		t.Fatalf("expected detect-only video path to keep best result path empty, got %s", defects[0].BestResultPath)
 	}
+	if defects[0].Area != 0 || defects[0].Length != 0 || defects[0].Width != 0 {
+		t.Fatalf("expected video defects to omit physical metrics, got area=%v length=%v width=%v", defects[0].Area, defects[0].Length, defects[0].Width)
+	}
+	if defects[0].MeasurementSource != "none" || defects[0].MeasurementStatus != "unavailable" {
+		t.Fatalf("expected unavailable measurement markers, got source=%s status=%s", defects[0].MeasurementSource, defects[0].MeasurementStatus)
+	}
 
 	var observationCount int64
 	if err := db.Model(&model.DefectObservation{}).Count(&observationCount).Error; err != nil {

@@ -160,7 +160,7 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 	for _, detectedDefect := range pythonResult.Defects {
 		defectType := translateAlgorithmDefectType(detectedDefect.DefectType)
 		if hasYOLOCoords(detectedDefect.BBox.YOLOCoords) {
-			x, y, w, h, length, width, area := service.CalculatePhysicalDimensions(
+			x, y, w, h, _, _, area := service.CalculatePhysicalDimensions(
 				detectedDefect.BBox.YOLOCoords,
 				imgW,
 				imgH,
@@ -170,10 +170,15 @@ func (uc *DetectionUseCase) UploadAndDetect(req *dto.DetectionUploadRequest, cur
 			detectedDefect.BBox.Y = y
 			detectedDefect.BBox.Width = w
 			detectedDefect.BBox.Height = h
-			detectedDefect.Length = length
-			detectedDefect.Width = width
-			detectedDefect.Area = area
+
+			// 新规则：图片检测链路只保留面积，不再持久化长宽。
+			// 后端仍负责补全 bbox 像素坐标；只有算法没有提供面积时，才退回旧的 bbox 面积兜底逻辑。
+			if detectedDefect.Area <= 0 {
+				detectedDefect.Area = area
+			}
 		}
+		detectedDefect.Length = 0
+		detectedDefect.Width = 0
 
 		defect := &model.Defect{
 			BridgeID:   req.BridgeID,

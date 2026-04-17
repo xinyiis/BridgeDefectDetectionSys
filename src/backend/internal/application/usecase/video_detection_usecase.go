@@ -1080,15 +1080,12 @@ func (uc *VideoDetectionUseCase) applyFrameResult(task *model.VideoAnalysisTask,
 
 		currentDefect := dto.VideoFrameDefect{
 			DefectType:        defectType,
-			MeasurementSource: "bbox_estimate",
-			MeasurementStatus: "estimated",
+			MeasurementSource: "none",
+			MeasurementStatus: "unavailable",
 		}
 		if imgW > 0 && imgH > 0 {
-			x, y, w, h, length, width, area := service.CalculatePhysicalDimensions(item.YOLOCoords, imgW, imgH, task.PixelRatio)
+			x, y, w, h, _, _, _ := service.CalculatePhysicalDimensions(item.YOLOCoords, imgW, imgH, task.PixelRatio)
 			currentDefect.BBox = dto.VideoBBox{X: x, Y: y, Width: w, Height: h}
-			currentDefect.Length = length
-			currentDefect.Width = width
-			currentDefect.Area = area
 		}
 
 		track, becameBest := uc.upsertTrack(task, tracks, currentDefect, item.Confidence, req.FrameNo, observedAt)
