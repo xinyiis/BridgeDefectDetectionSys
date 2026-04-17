@@ -48,12 +48,13 @@ func (uc *ReportUseCase) CreateReport(req *dto.CreateReportRequest, currentUser 
 		return nil, err
 	}
 
-	// 2. 解析时间
-	startTime, err := time.Parse("2006-01-02", req.StartTime)
+	// 2. 解析时间（使用本地时区）
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	startTime, err := time.ParseInLocation("2006-01-02", req.StartTime, loc)
 	if err != nil {
 		return nil, errors.New("开始时间格式错误，应为：YYYY-MM-DD")
 	}
-	endTime, err := time.Parse("2006-01-02", req.EndTime)
+	endTime, err := time.ParseInLocation("2006-01-02", req.EndTime, loc)
 	if err != nil {
 		return nil, errors.New("结束时间格式错误，应为：YYYY-MM-DD")
 	}
