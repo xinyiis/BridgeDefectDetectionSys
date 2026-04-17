@@ -85,6 +85,16 @@ func (g *ReportGenerator) addChineseFont() error {
 			continue
 		}
 
+		ok, err := probeChineseFont(candidate)
+		if err != nil {
+			loadErrors = append(loadErrors, fmt.Sprintf("%s (探测失败: %v)", candidate, err))
+			continue
+		}
+		if !ok {
+			loadErrors = append(loadErrors, fmt.Sprintf("%s (不支持中文字符渲染)", candidate))
+			continue
+		}
+
 		if err := g.registerFont("sourcehansans", candidate); err != nil {
 			loadErrors = append(loadErrors, fmt.Sprintf("%s (%v)", candidate, err))
 			continue
@@ -107,7 +117,7 @@ func (g *ReportGenerator) addChineseFont() error {
 		loadErrorText = strings.Join(loadErrors, "; ")
 	}
 
-	return fmt.Errorf("%s。已尝试路径: %s。加载错误: %s。建议: 在后端目录执行 `mkdir -p ./fonts && wget -O ./fonts/SourceHanSans-Regular.ttf https://github.com/notofonts/noto-cjk/raw/main/Sans/TTF/SimplifiedChinese/NotoSansSC-Regular.ttf`", baseError, strings.Join(candidates, ", "), loadErrorText)
+	return fmt.Errorf("%s。已尝试路径: %s。加载错误: %s。建议: 安装中文字体并配置 BRIDGE_PDF_FONT_PATH，例如 `sudo apt-get update && sudo apt-get install -y fonts-noto-cjk && export BRIDGE_PDF_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`", baseError, strings.Join(candidates, ", "), loadErrorText)
 }
 
 func (g *ReportGenerator) registerFont(fontName, fontPath string) error {
@@ -159,9 +169,52 @@ func buildFontCandidates(configuredFontPath, envFontPath string) []string {
 	add("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 	add("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc")
 	add("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")
-	add("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf")
 
 	return candidates
+}
+
+func probeChineseFont(fontPath string) (bool, error) {
+	probe := &gopdf.GoPdf{}
+	probe.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
+	probe.AddPage()
+
+	if err := registerFontOnPDF(probe, "probe-font", fontPath); err != nil {
+		return false, err
+	}
+	if err := probe.SetFont("probe-font", "", 12); err != nil {
+		return false, fmt.Errorf("设置探测字体失败: %v", err)
+	}
+
+	width, err := probe.MeasureTextWidth("桥梁检测")
+	if err != nil {
+		return false, fmt.Errorf("探测字体测宽失败: %v", err)
+	}
+
+	// 宽度接近 0 说明中文字符未被字体正确支持。
+	return width > 0.01, nil
+}
+
+func registerFontOnPDF(pdf *gopdf.GoPdf, fontName, fontPath string) error {
+	addErr := pdf.AddTTFFont(fontName, fontPath)
+	if addErr == nil {
+		return nil
+	}
+
+	// gopdf 对 .ttc 支持有限，尝试通过字体数据方式兜底。
+	if strings.EqualFold(filepath.Ext(fontPath), ".ttc") {
+		data, readErr := os.ReadFile(fontPath)
+		if readErr != nil {
+			return fmt.Errorf("读取TTC字体文件失败: %v", readErr)
+		}
+		if len(data) < 12 {
+			return fmt.Errorf("TTC文件格式无效")
+		}
+		if err := pdf.AddTTFFontData(fontName, data); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("加载字体文件失败: %s (%v)", fontPath, addErr)
 }
 
 // generateCoverPage 生成封面
