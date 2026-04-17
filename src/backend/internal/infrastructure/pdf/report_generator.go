@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ func (g *ReportGenerator) GenerateBridgeInspectionReport(
 	if err := g.generateDefectDetails(defects); err != nil {
 		return fmt.Errorf("生成缺陷详情失败: %v", err)
 	}
-	if err := g.generateConclusion(report); err != nil {
+	if err := g.generateConclusion(report, defects); err != nil {
 		return fmt.Errorf("生成结论失败: %v", err)
 	}
 
@@ -766,7 +767,7 @@ func (g *ReportGenerator) generateDefectDetails(defects []model.Defect) error {
 }
 
 // generateConclusion 生成结论与建议
-func (g *ReportGenerator) generateConclusion(report *model.Report) error {
+func (g *ReportGenerator) generateConclusion(report *model.Report, defects []model.Defect) error {
 	g.pdf.AddPage()
 
 	// 章节标题
@@ -774,89 +775,377 @@ func (g *ReportGenerator) generateConclusion(report *model.Report) error {
 		return err
 	}
 
-	if err := g.pdf.SetFont("sourcehansans", "", 11); err != nil {
-		return err
-	}
-	g.pdf.SetTextColor(33, 37, 41)
+	summary := buildReportSummary(report, defects)
+	currentY := 60.0
 
-	// 整体评估
-	g.pdf.SetX(20)
-	g.pdf.SetY(60)
-	if err := g.pdf.Cell(nil, "6.1 整体评估"); err != nil {
-		return err
-	}
-
-	currentY := 70.0
-	assessment := ""
-	if report.HealthScore >= 90 {
-		assessment = "桥梁整体状况优秀，结构完好，无明显缺陷。建议按常规周期进行检测维护。"
-	} else if report.HealthScore >= 70 {
-		assessment = "桥梁整体状况良好，存在少量轻微缺陷。建议加强日常巡查，定期监测缺陷发展情况。"
-	} else if report.HealthScore >= 50 {
-		assessment = "桥梁整体状况一般，存在一定数量的缺陷。建议尽快安排专业检测，制定维修方案。"
-	} else if report.HealthScore >= 30 {
-		assessment = "桥梁整体状况较差，存在较多缺陷，部分为高危缺陷。建议立即开展详细检测，制定加固维修方案。"
-	} else {
-		assessment = "桥梁整体状况危险，存在大量高危缺陷，可能影响结构安全。建议立即采取临时加固措施，限制通行，尽快开展抢修。"
-	}
-
-	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
-		return err
-	}
-	g.pdf.SetTextColor(73, 80, 87)
-	g.pdf.SetX(20)
-	g.pdf.SetY(currentY)
-	if err := g.pdf.Cell(nil, assessment); err != nil {
-		return err
-	}
-
-	// 维护建议
-	currentY += 20
-	g.pdf.SetY(currentY)
+	// 6.1 执行摘要
 	if err := g.pdf.SetFont("sourcehansans", "", 11); err != nil {
 		return err
 	}
 	g.pdf.SetTextColor(33, 37, 41)
 	g.pdf.SetX(20)
-	if err := g.pdf.Cell(nil, "6.2 维护建议"); err != nil {
+	g.pdf.SetY(currentY)
+	if err := g.pdf.Cell(nil, "6.1 执行摘要"); err != nil {
 		return err
 	}
 
-	currentY += 10
-	suggestions := []string{
-		"1. 对检测到的高危缺陷进行重点监测，记录发展趋势",
-		"2. 制定针对性的维修计划，优先处理高危缺陷",
-		"3. 加强桥梁日常巡查频率，及时发现新增缺陷",
-		"4. 建立缺陷档案，跟踪缺陷发展历史",
-		"5. 定期开展无人机智能检测，提高检测效率和覆盖率",
+	currentY += 9
+	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+		return err
 	}
+	g.pdf.SetTextColor(73, 80, 87)
+	execSummary := fmt.Sprintf(
+		"监测区间 %s 至 %s，共识别缺陷 %d 个，其中高危 %d 个（占比 %.1f%%）。综合健康评分 %.2f 分，健康等级 %s，风险等级 %s。",
+		report.StartTime.Format("2006-01-02"),
+		report.EndTime.Format("2006-01-02"),
+		report.DefectCount,
+		report.HighRiskCount,
+		summary.HighRiskRatio*100,
+		report.HealthScore,
+		summary.HealthLevel,
+		summary.RiskLevel,
+	)
+	nextY, err := g.drawWrappedText(20, currentY, 170, 6, execSummary)
+	if err != nil {
+		return err
+	}
+	currentY = nextY + 2
+
+	// 6.2 关键发现
+	if err := g.pdf.SetFont("sourcehansans", "", 11); err != nil {
+		return err
+	}
+	g.pdf.SetTextColor(33, 37, 41)
+	g.pdf.SetX(20)
+	g.pdf.SetY(currentY)
+	if err := g.pdf.Cell(nil, "6.2 关键发现"); err != nil {
+		return err
+	}
+	currentY += 9
 
 	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
 		return err
 	}
 	g.pdf.SetTextColor(73, 80, 87)
-	for _, suggestion := range suggestions {
-		g.pdf.SetY(currentY)
-		g.pdf.SetX(20)
-		if err := g.pdf.Cell(nil, suggestion); err != nil {
+	for i, finding := range summary.KeyFindings {
+		line := fmt.Sprintf("%d. %s", i+1, finding)
+		nextY, err = g.drawWrappedText(20, currentY, 170, 6, line)
+		if err != nil {
 			return err
 		}
-		currentY += 8
+		currentY = nextY + 1
 	}
 
-	// 报告结束标记
-	currentY += 15
+	currentY += 2
+
+	// 6.3 风险与处置建议
+	if err := g.pdf.SetFont("sourcehansans", "", 11); err != nil {
+		return err
+	}
+	g.pdf.SetTextColor(33, 37, 41)
+	g.pdf.SetX(20)
 	g.pdf.SetY(currentY)
+	if err := g.pdf.Cell(nil, "6.3 风险与处置建议"); err != nil {
+		return err
+	}
+	currentY += 9
+
+	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+		return err
+	}
+	g.pdf.SetTextColor(73, 80, 87)
+	riskText := fmt.Sprintf(
+		"当前风险判定为%s。建议按“先高危、后一般”的顺序实施处置，优先闭环高危缺陷并跟踪复检结果。",
+		summary.RiskLevel,
+	)
+	nextY, err = g.drawWrappedText(20, currentY, 170, 6, riskText)
+	if err != nil {
+		return err
+	}
+	currentY = nextY + 2
+
+	for i, action := range summary.PriorityActions {
+		line := fmt.Sprintf("%d. %s", i+1, action)
+		nextY, err = g.drawWrappedText(20, currentY, 170, 6, line)
+		if err != nil {
+			return err
+		}
+		currentY = nextY + 1
+	}
+
+	currentY += 2
+
+	// 6.4 下次检测建议
+	if err := g.pdf.SetFont("sourcehansans", "", 11); err != nil {
+		return err
+	}
+	g.pdf.SetTextColor(33, 37, 41)
+	g.pdf.SetX(20)
+	g.pdf.SetY(currentY)
+	if err := g.pdf.Cell(nil, "6.4 下次检测建议"); err != nil {
+		return err
+	}
+	currentY += 9
+
+	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+		return err
+	}
+	g.pdf.SetTextColor(73, 80, 87)
+	nextInspectText := fmt.Sprintf(
+		"建议下次检测时间：%s（建议间隔：%d天，依据：%s）。",
+		summary.NextInspectionDate.Format("2006-01-02"),
+		summary.NextInspectionIntervalDays,
+		summary.NextInspectionReason,
+	)
+	nextY, err = g.drawWrappedText(20, currentY, 170, 6, nextInspectText)
+	if err != nil {
+		return err
+	}
+	currentY = nextY + 8
+
+	// 报告结束标记
 	if err := g.pdf.SetFont("sourcehansans", "", 9); err != nil {
 		return err
 	}
 	g.pdf.SetTextColor(173, 181, 189)
 	g.pdf.SetX(20)
+	g.pdf.SetY(currentY)
 	if err := g.pdf.Cell(nil, "--- 报告结束 ---"); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+type reportSummary struct {
+	HealthLevel                string
+	RiskLevel                  string
+	HighRiskRatio              float64
+	KeyFindings                []string
+	PriorityActions            []string
+	NextInspectionDate         time.Time
+	NextInspectionIntervalDays int
+	NextInspectionReason       string
+}
+
+func buildReportSummary(report *model.Report, defects []model.Defect) reportSummary {
+	summary := reportSummary{
+		HealthLevel: classifyHealthLevel(report.HealthScore),
+	}
+
+	if report.DefectCount > 0 {
+		summary.HighRiskRatio = float64(report.HighRiskCount) / float64(report.DefectCount)
+	}
+
+	riskLevel, days, reason := classifyRiskAndNextInspection(report.HealthScore, report.HighRiskCount, report.DefectCount)
+	summary.RiskLevel = riskLevel
+	summary.NextInspectionIntervalDays = days
+	summary.NextInspectionReason = reason
+	summary.NextInspectionDate = report.EndTime.AddDate(0, 0, days)
+
+	typeCount := make(map[string]int)
+	var totalConfidence float64
+	var totalArea float64
+	for _, defect := range defects {
+		typeCount[defect.DefectType]++
+		totalConfidence += defect.Confidence
+		totalArea += defect.Area
+	}
+
+	topTypes := topDefectTypes(typeCount, 3)
+	topTypesText := "无明显集中类型"
+	if len(topTypes) > 0 {
+		topTypesText = strings.Join(topTypes, "、")
+	}
+
+	avgConfidence := 0.0
+	avgArea := 0.0
+	if len(defects) > 0 {
+		avgConfidence = totalConfidence / float64(len(defects))
+		avgArea = totalArea / float64(len(defects))
+	}
+
+	trendText := buildTrendSummary(report, defects)
+
+	summary.KeyFindings = []string{
+		fmt.Sprintf("缺陷类型集中度：主要集中在%s。", topTypesText),
+		fmt.Sprintf("缺陷趋势判断：%s。", trendText),
+		fmt.Sprintf("检测结果质量：平均置信度 %.2f%%，平均缺陷面积 %.4f㎡。", avgConfidence*100, avgArea),
+	}
+
+	summary.PriorityActions = buildPriorityActions(summary.RiskLevel, report, topTypesText)
+	return summary
+}
+
+func classifyHealthLevel(score float64) string {
+	switch {
+	case score >= 90:
+		return "优秀"
+	case score >= 70:
+		return "良好"
+	case score >= 50:
+		return "一般"
+	case score >= 30:
+		return "较差"
+	default:
+		return "危险"
+	}
+}
+
+func classifyRiskAndNextInspection(score float64, highRiskCount, defectCount int) (riskLevel string, days int, reason string) {
+	if highRiskCount >= 5 || score < 30 {
+		return "高风险", 7, "高危缺陷数量较多或健康评分过低"
+	}
+	if highRiskCount > 0 || score < 70 || defectCount >= 20 {
+		return "中风险", 14, "存在高危缺陷或整体缺陷数量偏多"
+	}
+	return "低风险", 30, "高危缺陷较少且健康评分处于可控区间"
+}
+
+func topDefectTypes(typeCount map[string]int, topN int) []string {
+	type pair struct {
+		name  string
+		count int
+	}
+	pairs := make([]pair, 0, len(typeCount))
+	for name, count := range typeCount {
+		pairs = append(pairs, pair{name: name, count: count})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count == pairs[j].count {
+			return pairs[i].name < pairs[j].name
+		}
+		return pairs[i].count > pairs[j].count
+	})
+
+	if topN > len(pairs) {
+		topN = len(pairs)
+	}
+	result := make([]string, 0, topN)
+	for i := 0; i < topN; i++ {
+		result = append(result, fmt.Sprintf("%s(%d个)", pairs[i].name, pairs[i].count))
+	}
+	return result
+}
+
+func buildTrendSummary(report *model.Report, defects []model.Defect) string {
+	if len(defects) < 2 {
+		return "样本量不足，暂无法判断趋势"
+	}
+
+	mid := report.StartTime.Add(report.EndTime.Sub(report.StartTime) / 2)
+	firstHalf := 0
+	secondHalf := 0
+	for _, defect := range defects {
+		if defect.DetectedAt.Before(mid) {
+			firstHalf++
+		} else {
+			secondHalf++
+		}
+	}
+
+	switch {
+	case firstHalf == 0 && secondHalf > 0:
+		return "后半程新增明显增多，呈上升趋势"
+	case secondHalf == 0 && firstHalf > 0:
+		return "后半程未发现新增，呈下降趋势"
+	case secondHalf > firstHalf*12/10:
+		return fmt.Sprintf("后半程缺陷数(%d)高于前半程(%d)，呈上升趋势", secondHalf, firstHalf)
+	case secondHalf < firstHalf*8/10:
+		return fmt.Sprintf("后半程缺陷数(%d)低于前半程(%d)，呈下降趋势", secondHalf, firstHalf)
+	default:
+		return fmt.Sprintf("前后半程缺陷数接近（%d vs %d），整体平稳", firstHalf, secondHalf)
+	}
+}
+
+func buildPriorityActions(riskLevel string, report *model.Report, topTypesText string) []string {
+	actions := make([]string, 0, 5)
+
+	if report.HighRiskCount > 0 {
+		actions = append(actions, fmt.Sprintf("48小时内完成 %d 个高危缺陷复核，明确加固/修复清单。", report.HighRiskCount))
+	} else {
+		actions = append(actions, "本周期未识别高危缺陷，保持例行巡检频率并关注新增异常。")
+	}
+
+	actions = append(actions, fmt.Sprintf("围绕主导缺陷类型（%s）制定专项治理方案，优先处理重复出现区域。", topTypesText))
+
+	switch riskLevel {
+	case "高风险":
+		actions = append(actions, "建议立即组织结构安全专项评估，必要时采取限载或临时交通管控。")
+	case "中风险":
+		actions = append(actions, "建议两周内完成重点区域复检，并形成闭环处置台账。")
+	default:
+		actions = append(actions, "建议按月开展常规复检，持续跟踪缺陷演化趋势。")
+	}
+
+	actions = append(actions, "统一记录缺陷位置、面积和复检结果，作为下周期趋势对比基线。")
+	return actions
+}
+
+func (g *ReportGenerator) drawWrappedText(x, y, maxWidth, lineHeight float64, text string) (float64, error) {
+	lines, err := g.wrapText(text, maxWidth)
+	if err != nil {
+		return y, err
+	}
+
+	for _, line := range lines {
+		g.pdf.SetX(x)
+		g.pdf.SetY(y)
+		if err := g.pdf.Cell(nil, line); err != nil {
+			return y, err
+		}
+		y += lineHeight
+	}
+	return y, nil
+}
+
+func (g *ReportGenerator) wrapText(text string, maxWidth float64) ([]string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return []string{""}, nil
+	}
+
+	lines := make([]string, 0, 8)
+	paragraphs := strings.Split(text, "\n")
+	for _, paragraph := range paragraphs {
+		p := strings.TrimSpace(paragraph)
+		if p == "" {
+			lines = append(lines, "")
+			continue
+		}
+
+		current := ""
+		for _, r := range p {
+			candidate := current + string(r)
+			width, err := g.pdf.MeasureTextWidth(candidate)
+			if err != nil {
+				return nil, err
+			}
+
+			if width <= maxWidth {
+				current = candidate
+				continue
+			}
+
+			if current == "" {
+				lines = append(lines, string(r))
+				continue
+			}
+
+			lines = append(lines, strings.TrimSpace(current))
+			current = string(r)
+		}
+
+		if strings.TrimSpace(current) != "" {
+			lines = append(lines, strings.TrimSpace(current))
+		}
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, "")
+	}
+	return lines, nil
 }
 
 // addSectionTitle 添加章节标题
