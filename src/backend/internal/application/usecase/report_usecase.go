@@ -58,6 +58,9 @@ func (uc *ReportUseCase) CreateReport(req *dto.CreateReportRequest, currentUser 
 		return nil, errors.New("结束时间格式错误，应为：YYYY-MM-DD")
 	}
 
+	// 将结束时间调整为当天的 23:59:59，以包含当天的所有数据
+	endTime = endTime.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+
 	// 验证时间范围
 	if endTime.Before(startTime) {
 		return nil, errors.New("结束时间不能早于开始时间")
