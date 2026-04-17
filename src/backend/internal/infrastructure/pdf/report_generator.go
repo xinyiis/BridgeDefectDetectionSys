@@ -55,14 +55,22 @@ func (g *ReportGenerator) GenerateBridgeInspectionReport(
 	if err := g.generateDetectionOverview(report, defects); err != nil {
 		return fmt.Errorf("生成检测概览失败: %v", err)
 	}
-	if err := g.generateStatistics(report, defects); err != nil {
-		return fmt.Errorf("生成统计分析失败: %v", err)
-	}
-	if err := g.generateHighRiskDefects(defects); err != nil {
-		return fmt.Errorf("生成高危缺陷列表失败: %v", err)
-	}
-	if err := g.generateDefectDetails(defects); err != nil {
-		return fmt.Errorf("生成缺陷详情失败: %v", err)
+
+	// 仅在存在缺陷数据时生成详情章节，避免大量空白页。
+	if len(defects) > 0 {
+		if err := g.generateStatistics(report, defects); err != nil {
+			return fmt.Errorf("生成统计分析失败: %v", err)
+		}
+
+		if countHighRiskDefects(defects) > 0 {
+			if err := g.generateHighRiskDefects(defects); err != nil {
+				return fmt.Errorf("生成高危缺陷列表失败: %v", err)
+			}
+		}
+
+		if err := g.generateDefectDetails(defects); err != nil {
+			return fmt.Errorf("生成缺陷详情失败: %v", err)
+		}
 	}
 	if err := g.generateConclusion(report, defects); err != nil {
 		return fmt.Errorf("生成结论失败: %v", err)
@@ -539,6 +547,17 @@ func (g *ReportGenerator) generateStatistics(report *model.Report, defects []mod
 			// 删除临时图表文件
 			os.Remove(chartPath)
 		}
+	} else {
+		if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+			return err
+		}
+		g.pdf.SetTextColor(108, 117, 125)
+		g.pdf.SetX(20)
+		g.pdf.SetY(currentY)
+		if err := g.pdf.Cell(nil, "当前时间范围内暂无缺陷数据，无法绘制类型分布图。"); err != nil {
+			return err
+		}
+		currentY += 20
 	}
 
 	// 3.2 缺陷趋势分析
@@ -570,6 +589,16 @@ func (g *ReportGenerator) generateStatistics(report *model.Report, defects []mod
 			}
 			// 删除临时图表文件
 			os.Remove(chartPath)
+		}
+	} else {
+		if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+			return err
+		}
+		g.pdf.SetTextColor(108, 117, 125)
+		g.pdf.SetX(20)
+		g.pdf.SetY(currentY)
+		if err := g.pdf.Cell(nil, "当前时间范围内暂无缺陷数据，无法绘制趋势图。"); err != nil {
+			return err
 		}
 	}
 
@@ -607,36 +636,12 @@ func (g *ReportGenerator) generateHighRiskDefects(defects []model.Defect) error 
 	}
 
 	// 表头
-	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+	colWidths := []float64{32, 52, 24, 24, 38}
+	colHeaders := []string{"缺陷类型", "位置", "面积(㎡)", "置信度", "检测时间"}
+	currentY := 60.0
+	if err := g.drawHighRiskHeader(currentY, colWidths, colHeaders); err != nil {
 		return err
 	}
-	currentY := 60.0
-
-	// 表头背景
-	g.pdf.SetFillColor(33, 37, 41)
-	g.pdf.RectFromUpperLeftWithStyle(20, currentY, 170, 8, "F")
-
-	// 表头文字
-	g.pdf.SetTextColor(255, 255, 255)
-	headers := []struct {
-		text string
-		x    float64
-	}{
-		{"缺陷类型", 22},
-		{"位置", 50},
-		{"面积(㎡)", 100},
-		{"置信度", 125},
-		{"检测时间", 150},
-	}
-
-	g.pdf.SetY(currentY + 2)
-	for _, h := range headers {
-		g.pdf.SetX(h.x)
-		if err := g.pdf.Cell(nil, h.text); err != nil {
-			return err
-		}
-	}
-
 	currentY += 8
 
 	// 表格数据
@@ -646,27 +651,43 @@ func (g *ReportGenerator) generateHighRiskDefects(defects []model.Defect) error 
 	g.pdf.SetTextColor(33, 37, 41)
 
 	for i, defect := range highRiskDefects {
+		if currentY+7 > 278 {
+			g.pdf.AddPage()
+			if err := g.addSectionTitle("4. 高危缺陷列表（续）"); err != nil {
+				return err
+			}
+			currentY = 60
+			if err := g.drawHighRiskHeader(currentY, colWidths, colHeaders); err != nil {
+				return err
+			}
+			currentY += 8
+		}
+
 		// 交替行颜色
 		if i%2 == 1 {
 			g.pdf.SetFillColor(248, 249, 250)
 			g.pdf.RectFromUpperLeftWithStyle(20, currentY, 170, 7, "F")
 		}
 
+		x := 22.0
 		g.pdf.SetY(currentY + 2)
-		g.pdf.SetX(22)
-		if err := g.pdf.Cell(nil, defect.DefectType); err != nil {
+		g.pdf.SetX(x)
+		if err := g.pdf.Cell(nil, truncateTextToWidth(g.pdf, defect.DefectType, colWidths[0]-3)); err != nil {
 			return err
 		}
+		x += colWidths[0]
 
-		g.pdf.SetX(50)
-		if err := g.pdf.Cell(nil, defect.BBox); err != nil {
+		g.pdf.SetX(x)
+		if err := g.pdf.Cell(nil, truncateTextToWidth(g.pdf, compactBBox(defect.BBox), colWidths[1]-3)); err != nil {
 			return err
 		}
+		x += colWidths[1]
 
-		g.pdf.SetX(100)
+		g.pdf.SetX(x)
 		if err := g.pdf.Cell(nil, fmt.Sprintf("%.4f", defect.Area)); err != nil {
 			return err
 		}
+		x += colWidths[2]
 
 		// 置信度颜色编码
 		if defect.Confidence >= 0.95 {
@@ -676,13 +697,14 @@ func (g *ReportGenerator) generateHighRiskDefects(defects []model.Defect) error 
 		} else {
 			g.pdf.SetTextColor(255, 193, 7)
 		}
-		g.pdf.SetX(125)
+		g.pdf.SetX(x)
 		if err := g.pdf.Cell(nil, fmt.Sprintf("%.2f%%", defect.Confidence*100)); err != nil {
 			return err
 		}
 		g.pdf.SetTextColor(33, 37, 41)
+		x += colWidths[3]
 
-		g.pdf.SetX(150)
+		g.pdf.SetX(x)
 		if err := g.pdf.Cell(nil, defect.DetectedAt.Format("2006-01-02")); err != nil {
 			return err
 		}
@@ -712,11 +734,19 @@ func (g *ReportGenerator) generateDefectDetails(defects []model.Defect) error {
 		typeGroups[defect.DefectType] = append(typeGroups[defect.DefectType], defect)
 	}
 
+	// 为了保证分页稳定，先按类型名称排序
+	typeNames := make([]string, 0, len(typeGroups))
+	for typeName := range typeGroups {
+		typeNames = append(typeNames, typeName)
+	}
+	sort.Strings(typeNames)
+
 	// 遍历每种类型
 	typeIndex := 1
 	currentY := 60.0
 
-	for defectType, defectList := range typeGroups {
+	for _, defectType := range typeNames {
+		defectList := typeGroups[defectType]
 		// 检查是否需要换页
 		if currentY > 250 {
 			g.pdf.AddPage()
@@ -741,6 +771,10 @@ func (g *ReportGenerator) generateDefectDetails(defects []model.Defect) error {
 		}
 		g.pdf.SetTextColor(73, 80, 87)
 
+		sort.Slice(defectList, func(i, j int) bool {
+			return defectList[i].DetectedAt.After(defectList[j].DetectedAt)
+		})
+
 		for i, defect := range defectList {
 			// 检查是否需要换页
 			if currentY > 270 {
@@ -748,15 +782,21 @@ func (g *ReportGenerator) generateDefectDetails(defects []model.Defect) error {
 				currentY = 40
 			}
 
+			line1 := fmt.Sprintf("%d) 检测时间: %s   面积: %.4f㎡   置信度: %.2f%%",
+				i+1, defect.DetectedAt.Format("2006-01-02"), defect.Area, defect.Confidence*100)
 			g.pdf.SetY(currentY)
 			g.pdf.SetX(25)
-			text := fmt.Sprintf("%d. 边界框:%s 面积:%.4f㎡ 置信度:%.2f%% 检测时间:%s",
-				i+1, defect.BBox, defect.Area, defect.Confidence*100,
-				defect.DetectedAt.Format("2006-01-02"))
-			if err := g.pdf.Cell(nil, text); err != nil {
+			if err := g.pdf.Cell(nil, line1); err != nil {
 				return err
 			}
-			currentY += 7
+
+			currentY += 5
+			line2 := "位置: " + compactBBox(defect.BBox)
+			nextY, err := g.drawWrappedText(25, currentY, 160, 5, line2)
+			if err != nil {
+				return err
+			}
+			currentY = nextY + 2
 		}
 
 		currentY += 5
@@ -1146,6 +1186,67 @@ func (g *ReportGenerator) wrapText(text string, maxWidth float64) ([]string, err
 		lines = append(lines, "")
 	}
 	return lines, nil
+}
+
+func countHighRiskDefects(defects []model.Defect) int {
+	count := 0
+	for _, defect := range defects {
+		if defect.Confidence >= 0.85 || defect.Area >= 0.02 {
+			count++
+		}
+	}
+	return count
+}
+
+func compactBBox(raw string) string {
+	clean := strings.TrimSpace(raw)
+	clean = strings.ReplaceAll(clean, "\n", " ")
+	clean = strings.ReplaceAll(clean, "\t", " ")
+	return strings.Join(strings.Fields(clean), " ")
+}
+
+func truncateTextToWidth(pdf *gopdf.GoPdf, text string, maxWidth float64) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+
+	width, err := pdf.MeasureTextWidth(text)
+	if err == nil && width <= maxWidth {
+		return text
+	}
+
+	ellipsis := "..."
+	runes := []rune(text)
+	for i := len(runes); i > 0; i-- {
+		candidate := string(runes[:i]) + ellipsis
+		w, e := pdf.MeasureTextWidth(candidate)
+		if e == nil && w <= maxWidth {
+			return candidate
+		}
+	}
+
+	return ellipsis
+}
+
+func (g *ReportGenerator) drawHighRiskHeader(currentY float64, colWidths []float64, headers []string) error {
+	if err := g.pdf.SetFont("sourcehansans", "", 10); err != nil {
+		return err
+	}
+	g.pdf.SetFillColor(33, 37, 41)
+	g.pdf.RectFromUpperLeftWithStyle(20, currentY, 170, 8, "F")
+	g.pdf.SetTextColor(255, 255, 255)
+
+	x := 22.0
+	g.pdf.SetY(currentY + 2)
+	for i, h := range headers {
+		g.pdf.SetX(x)
+		if err := g.pdf.Cell(nil, h); err != nil {
+			return err
+		}
+		x += colWidths[i]
+	}
+	return nil
 }
 
 // addSectionTitle 添加章节标题
